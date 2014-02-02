@@ -419,3 +419,4 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
             parser.error("The database name is required.")
     return opt, args, parser
     
+#sudo install gtc.py /usr/local/lib/python2.7/dist-packages
