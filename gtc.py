@@ -332,6 +332,9 @@ DEFAULT_OPTIONS=[('db_host', '127.0.0.1'),
 
 
 def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151.223', PORT='80', SSLCertificateFile=None, SSLCertificateKeyFile=None, ssl=True, ROOT=None, USER=None, GROUP=None):
+    hostname=socket.gethostname()
+    name=hostname+'_'+name
+
     if not ROOT:
         ROOT=DEFAULT_ROOT
     if not ServerName:
@@ -394,7 +397,7 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
         file(vhost_fn,'wb').write( vhost )        
         if not ssl:
             file(nvh,'wb').write('NameVirtualHost %s:%s\n'%(IP,PORT) )
-        file(sn, 'wb').write('ServerName localhost\n')
+        file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
         sys.exit(0)
     if opt.branch=='yes':
         git_addons=git_branch(ROOT, GIT, subdir='github', branch=True)
