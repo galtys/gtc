@@ -5,8 +5,11 @@ import optparse
 from bzrlib.branch import Branch
 from bzrlib.plugin import load_plugins
 load_plugins()
-
+import subprocess
+import psycopg2
+import ConfigParser
 import socket
+
 if socket.gethostname() in ['asus','jetel']:
     db_user='jan'
     db_password=''
@@ -21,7 +24,6 @@ else:
     DEFAULT_ROOT='/opt/openerp'
 
 def generate_config(addons, fn='server7devel.conf', options=None):
-    import ConfigParser
     c=ConfigParser.RawConfigParser()
     cfn=os.path.join(fn)
     server_path=None
@@ -54,49 +56,83 @@ def generate_config(addons, fn='server7devel.conf', options=None):
     c.set('options', 'addons_path', ','.join(addons_path) )
     return c, server_path
 
+#def vcs_status(ROOT, 
+def git_remote2local(ROOT, rb, subdir='github'):
+    rb, branch,addon_subdir,is_module_path = rb
+    l=os.path.join(ROOT, subdir, *rb.split('/')[-2:])
+    p=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path
+    #if is_module_path:
+        #pp=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path        
+    #    out.append(p)
+    #else:
+        #x=[ROOT, subdir] + rb.split('/')[-2:]
+        #ll=os.path.join(*x)
+    #    out.append(l)
+    pp = os.path.join(p, addon_subdir)
+    return (l,p,pp) #directory, addon path
+def git_status(ROOT, remote_branches,subdir='github'):
+    for xxx in remote_branches:
+        #rb, branch,addon_subdir,is_module_path = xxx
+        local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'git', local_dir
+            args = ["git","status","--branch"]
+            subprocess.call(args)
+            os.chdir(cwd)
+   
 def git_branch(ROOT, remote_branches, cmd='pull', subdir='github', branch=False):
-    import subprocess
     out=[]
     for xxx in remote_branches:
         rb, branch,addon_subdir,is_module_path = xxx
-        l=os.path.join(ROOT, subdir, *rb.split('/')[-2:])
-        p=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path
-        if is_module_path:
-            pp=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path
-            pp = os.path.join(p, addon_subdir)
-            out.append(pp)
-        else:
-            x=[ROOT, subdir] + rb.split('/')[-2:] + [addon_subdir]
-            ll=os.path.join(*x)
-            out.append(ll)
-        if os.path.isdir(l):
+        local_dir, p, addon_path = git_remote2local(ROOT, xxx, subdir=subdir)
+        out.append(addon_path)
+        if os.path.isdir(local_dir):
             pass       
         else:
-            if not os.path.isdir(p):
+            if not os.path.isdir(local_dir):
                 os.makedirs(p) #create if it does not exist
             #print [rb, p, l]
-            args = ["git","clone","--branch",branch, rb,l]
+            args = ["git","clone","--branch",branch, rb,local_dir]
             #print "subprocess.call with args: ", args
             if branch:
                 ret=subprocess.call(args)
     return out
+def bzr_remote2local(ROOT, rb):
+    l=os.path.join(ROOT, *rb.split('/')[-2:] )
+    p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
+    return l,p
+def bzr_status(ROOT, remote_branches):
+    for xxx in remote_branches:
+        #rb, branch,addon_subdir,is_module_path = xxx
+        local_dir,p  = bzr_remote2local(ROOT,xxx)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'bzr', local_dir
+            args = ["bzr","status"]
+            subprocess.call(args)
+            os.chdir(cwd)
 
 def bzr_branch(ROOT, remote_branches, cmd='', branch=False): #for existing branches, cmd can be push or pull
     out=[]
     for rb in remote_branches:
-        l=os.path.join(ROOT, *rb.split('/')[-2:] )
+        #l=os.path.join(ROOT, *rb.split('/')[-2:] )
+        #p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
+        l,p = bzr_remote2local(ROOT,rb)
         out.append(l)
         if os.path.isdir(l):
             #print 'exist'
-            if cmd in ['pull','push']:
-                r=Branch.open(rb) #remote branch
-                b=Branch.open(l)  #local branch
-                if cmd=='pull':
-                    b.pull(r)
-                if cmd=='push':
-                    b.push(r)
+            pass
+            #if cmd in ['pull','push']:
+            #    r=Branch.open(rb) #remote branch
+            #    b=Branch.open(l)  #local branch
+            #    if cmd=='pull':
+            #        b.pull(r)
+            #    if cmd=='push':
+            #        b.push(r)
         else:
-            p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
             if branch:
                 if not os.path.isdir(p):
                     os.makedirs(p) #create if it does not exist
@@ -300,7 +336,6 @@ ORDER BY 1"""
 
 def create_or_update_db_user(options):
     o=dict(options)
-    import psycopg2
     #if o['db_password']:
     #    
     #else:
@@ -349,15 +384,15 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
     if not OPTIONS:
         OPTIONS=DEFAULT_OPTIONS
     conf, server_path = generate_config(bzr_addons+git_addons, prod_config , options=OPTIONS)
-
-    if server_path:
-        usage = "usage: python %prog [options] database_name\n"+'Example : python %%prog -s %s -c %s dbname'%(server_path, prod_config)
-    else:
-        usage = "usage: python %prog [options] \n"+'Setup using : python %%prog -b -c %s '%(prod_config,)
+    exit_commands=['branch','write','status','unlink','push','pull']
+    usage = "usage: python %prog [options] command [database_name]\n"
+    usage += "  Commands: script,%s \n" % (','.join(exit_commands) )
+    usage += "  Current config path: %s\n" % prod_config
+    usage += "  Current server path: %s\n" % server_path
     parser = optparse.OptionParser(version='0.1', usage=usage)
     group = optparse.OptionGroup(parser, "Common options")
     parser.add_option_group(group)
-
+    
     group.add_option("-s", "--server-pythonpath",
                      dest="server_pythonpath",
                      help="Specify the OpenERP path with the openerp server module [%default]",
@@ -369,33 +404,51 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
                      dest="config",
                      help="Specify OpenERP Config file [%default]",
                      default=prod_config)
-    group.add_option("-d", "--daemon",
-                     dest="daemon",
-                     help="Generate write Daemon&apache files to /etc/init.d/openerp,/etc/apache2/sites-available/pjb.conf [%default] (yes|no)",
-                     default='no')
-    group.add_option("-b", "--branch",
-                     dest="branch",
-                     help="branch, generate config and set db user [%default] (yes|no)",
-                     default='no')
-    group.add_option("--cmd",
-                     dest="cmd",
-                     help="cmd to run, [%default] (push|pull)",
-                     default='')
-    group.add_option("-u", "--unling",
-                     dest="unlink",
-                     help="unlink files [%default] (yes|no)",
-                     default='no')
+    # group.add_option("-d", "--daemon",
+    #                  dest="daemon",
+    #                  help="Generate write Daemon&apache files to /etc/init.d/openerp,/etc/apache2/sites-available/pjb.conf [%default] (yes|no)",
+    #                  default='no')
+    # group.add_option("-b", "--branch",
+    #                  dest="branch",
+    #                  help="branch, generate config and set db user [%default] (yes|no)",
+    #                  default='no')
+    # group.add_option("--cmd",
+    #                  dest="cmd",
+    #                  help="cmd to run, [%default] (push|pull)",
+    #                  default='')
+    # group.add_option("-u", "--unlink",
+    #                  dest="unlink",
+    #                  help="unlink files [%default] (yes|no)",
+    #                  default='no')
+    # group.add_option("-t", "--status",
+    #                  dest="status",
+    #                  help="status [%default] (yes|no)",
+    #                  default='no')
 
     opt, args = parser.parse_args(sys_args)
+    dbname=None
+    if len(args)==1:
+        command = args[0]
+    elif len(args)==2:
+        command,dbname=args
+    else:
+        parser.error("Command argument is required.")
+
     wsgi_fn = os.path.join(ROOT, '%s_wsgi.py'%name )
     daemon_fn = '/etc/init.d/%s'%name
     vhost_fn = '/etc/apache2/sites-available/%s.conf'%name
     nvh='/etc/apache2/conf.d/namevhosts_%s' % name
     sn='/etc/apache2/conf.d/servername'
-    if opt.daemon=='yes':
+    generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, opt.config]
+    if command=='show':
+        for fn in generated_files:
+            print "%s %s" %(os.path.isfile(fn), fn)
+    if command=='status':
+        git_addons=git_status(ROOT, GIT, subdir='github')   
+        bzr_addons=bzr_status(ROOT, LP)   
+    if command=='write':
         file(daemon_fn,'wb').write( get_daemon(opt.server_pythonpath, opt.config, USER=USER,GROUP=GROUP,ROOT=ROOT)  )
-        import subprocess
-        subprocess.call( ("chmod +x /%s"%daemon_fn).split() )        
+        subprocess.call( ("chmod +x /%s"%daemon_fn).split() )
         file(wsgi_fn,'wb').write( get_wsgi(opt.config) )
         vhost = get_vhost(name, opt.server_pythonpath, ServerName, wsgi_fn , IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, SSLCertificateKeyFile=SSLCertificateKeyFile, ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
         file(vhost_fn,'wb').write( vhost )        
@@ -403,27 +456,23 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
             file(nvh,'wb').write('NameVirtualHost %s:%s\n'%(IP,PORT) )
         file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
         sys.exit(0)
-    if opt.branch=='yes':
+    if command=='branch':
         git_addons=git_branch(ROOT, GIT, subdir='github', branch=True, cmd=opt.cmd)
         bzr_addons=bzr_branch(ROOT, LP, branch=True, cmd=opt.cmd)
         conf, server_path = generate_config(bzr_addons+git_addons,opt.config , options=OPTIONS)
         with open(opt.config, 'wb') as cf:
             conf.write(cf)
         create_or_update_db_user(OPTIONS)
-    if opt.unlink=='yes':
+    if command=='unlink':
         for fn in [wsgi_fn, daemon_fn, vhost_fn, nvh, opt.config]:
             try:
                 os.unlink(fn)
                 print 'Removed: ', fn
             except:
                 print 'can not unlink ', fn
-    if len(args)==1:
-        dbname=args[0]
-    else:
-        if 'yes' in (opt.branch, opt.daemon, opt.unlink):
-            sys.exit(0)
-        else:
-            parser.error("The database name is required.")
-    return opt, args, parser
+    #print command,exit_commands
+    if command in exit_commands:
+        sys.exit(0)
+    return opt,args,parser,command,dbname
     
 #sudo install gtc.py /usr/local/lib/python2.7/dist-packages
