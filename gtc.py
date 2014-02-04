@@ -377,6 +377,10 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
                      dest="branch",
                      help="branch, generate config and set db user [%default] (yes|no)",
                      default='no')
+    group.add_option("--cmd",
+                     dest="cmd",
+                     help="cmd to run, [%default] (push|pull)",
+                     default='')
     group.add_option("-u", "--unling",
                      dest="unlink",
                      help="unlink files [%default] (yes|no)",
@@ -400,8 +404,8 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
         file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
         sys.exit(0)
     if opt.branch=='yes':
-        git_addons=git_branch(ROOT, GIT, subdir='github', branch=True)
-        bzr_addons=bzr_branch(ROOT, LP, branch=True)
+        git_addons=git_branch(ROOT, GIT, subdir='github', branch=True, cmd=opt.cmd)
+        bzr_addons=bzr_branch(ROOT, LP, branch=True, cmd=opt.cmd)
         conf, server_path = generate_config(bzr_addons+git_addons,opt.config , options=OPTIONS)
         with open(opt.config, 'wb') as cf:
             conf.write(cf)
