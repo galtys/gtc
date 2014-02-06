@@ -383,12 +383,20 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
     bzr_addons=bzr_branch(ROOT, LP, branch=False)
     if not OPTIONS:
         OPTIONS=DEFAULT_OPTIONS
+    wsgi_fn = os.path.join(ROOT, '%s_wsgi.py'%name )
+    daemon_fn = '/etc/init.d/%s'%name
+    vhost_fn = '/etc/apache2/sites-available/%s.conf'%name
+    nvh='/etc/apache2/conf.d/namevhosts_%s' % name
+    sn='/etc/apache2/conf.d/servername'
+    generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, prod_config]
+
     conf, server_path = generate_config(bzr_addons+git_addons, prod_config , options=OPTIONS)
     exit_commands=['branch','write','status','unlink','push','pull']
     usage = "usage: python %prog [options] command [database_name]\n"
     usage += "  Commands: script,%s \n" % (','.join(exit_commands) )
     usage += "  Current config path: %s\n" % prod_config
     usage += "  Current server path: %s\n" % server_path
+    usage += "Generated files:\n  " + '\n  '.join(generated_files)
     parser = optparse.OptionParser(version='0.1', usage=usage)
     group = optparse.OptionGroup(parser, "Common options")
     parser.add_option_group(group)
@@ -426,6 +434,7 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
     #                  default='no')
 
     opt, args = parser.parse_args(sys_args)
+    generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, opt.config]
     dbname=None
     if len(args)==1:
         command = args[0]
@@ -434,12 +443,6 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
     else:
         parser.error("Command argument is required.")
 
-    wsgi_fn = os.path.join(ROOT, '%s_wsgi.py'%name )
-    daemon_fn = '/etc/init.d/%s'%name
-    vhost_fn = '/etc/apache2/sites-available/%s.conf'%name
-    nvh='/etc/apache2/conf.d/namevhosts_%s' % name
-    sn='/etc/apache2/conf.d/servername'
-    generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, opt.config]
     if command=='show':
         for fn in generated_files:
             print "%s %s" %(os.path.isfile(fn), fn)
@@ -455,10 +458,13 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
         if not ssl:
             file(nvh,'wb').write('NameVirtualHost %s:%s\n'%(IP,PORT) )
         file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
+        for fn in generated_files:
+            print 50*'_'  ,fn, 50*'_'
+            print file(fn).read()
         sys.exit(0)
     if command=='branch':
-        git_addons=git_branch(ROOT, GIT, subdir='github', branch=True, cmd=opt.cmd)
-        bzr_addons=bzr_branch(ROOT, LP, branch=True, cmd=opt.cmd)
+        git_addons=git_branch(ROOT, GIT, subdir='github', branch=True)
+        bzr_addons=bzr_branch(ROOT, LP, branch=True)
         conf, server_path = generate_config(bzr_addons+git_addons,opt.config , options=OPTIONS)
         with open(opt.config, 'wb') as cf:
             conf.write(cf)
