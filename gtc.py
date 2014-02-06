@@ -61,6 +61,10 @@ def git_remote2local(ROOT, rb, subdir='github'):
     rb, branch,addon_subdir,is_module_path = rb
     l=os.path.join(ROOT, subdir, *rb.split('/')[-2:])
     p=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path
+    if is_module_path:
+        addon=l
+    else:
+        addon = os.path.join(l,addon_subdir)
     #if is_module_path:
         #pp=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path        
     #    out.append(p)
@@ -68,7 +72,7 @@ def git_remote2local(ROOT, rb, subdir='github'):
         #x=[ROOT, subdir] + rb.split('/')[-2:]
         #ll=os.path.join(*x)
     #    out.append(l)
-    pp = os.path.join(p, addon_subdir)
+    pp = os.path.join(p, addon)
     return (l,p,pp) #directory, addon path
 def git_status(ROOT, remote_branches,subdir='github'):
     for xxx in remote_branches:
