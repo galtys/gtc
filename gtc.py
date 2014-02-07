@@ -357,6 +357,7 @@ def create_or_update_db_user(options):
     cr.execute(user_list_sql)
     if o['db_user'] in [x[0] for x in cr.fetchall()]: #user exist?
         cr.execute("alter user %s with password '%s' " %( o['db_user'], o['db_password'] ) )
+        cr.execute("alter user %s with superuser" %( o['db_user'], ) )
     else:
         cr.execute("create user %s with password '%s'"  %( o['db_user'], o['db_password'] ) )
     cr.close()
@@ -395,7 +396,7 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
     generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, prod_config]
 
     conf, server_path = generate_config(bzr_addons+git_addons, prod_config , options=OPTIONS)
-    exit_commands=['branch','write','status','unlink','push','pull']
+    exit_commands=['db','branch','write','status','unlink','push','pull']
     usage = "usage: python %prog [options] command [database_name]\n"
     usage += "  Commands: script,%s \n" % (','.join(exit_commands) )
     usage += "  Current config path: %s\n" % prod_config
@@ -472,6 +473,7 @@ def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151
         conf, server_path = generate_config(bzr_addons+git_addons,opt.config , options=OPTIONS)
         with open(opt.config, 'wb') as cf:
             conf.write(cf)
+    if command=='db':
         create_or_update_db_user(OPTIONS)
     if command=='unlink':
         for fn in [wsgi_fn, daemon_fn, vhost_fn, nvh, opt.config]:
