@@ -86,8 +86,19 @@ def git_status(ROOT, remote_branches,subdir='github'):
             args = ["git","status","--branch"]
             subprocess.call(args)
             os.chdir(cwd)
+def git_push(ROOT, remote_branches,subdir='github'):
+    for xxx in remote_branches:
+        rb, branch,addon_subdir,is_module_path = xxx
+        local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'git push', local_dir
+            args = ["git","push","origin", branch]
+            subprocess.call(args)
+            os.chdir(cwd)
    
-def git_branch(ROOT, remote_branches, cmd='pull', subdir='github', branch=False):
+def git_branch(ROOT, remote_branches, subdir='github', branch=False):
     out=[]
     for xxx in remote_branches:
         rb, branch,addon_subdir,is_module_path = xxx
@@ -119,6 +130,17 @@ def bzr_status(ROOT, remote_branches):
             os.chdir(local_dir)
             print 44*'_', 'bzr', local_dir
             args = ["bzr","status"]
+            subprocess.call(args)
+            os.chdir(cwd)
+def bzr_push(ROOT, remote_branches):
+    for rb,local in remote_branches:
+        #rb, branch,addon_subdir,is_module_path = xxx
+        local_dir,p  = bzr_remote2local(ROOT,local)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'bzr push', local_dir
+            args = ["bzr","push", "--remember", rb]
             subprocess.call(args)
             os.chdir(cwd)
 
@@ -436,15 +458,18 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                             fn=''
                         print "%s %s" %(os.path.isfile(fn), fn)
                 if command=='status':
-                    git_addons=git_status(ROOT, GIT, subdir='github')   
-                    bzr_addons=bzr_status(ROOT, LP)   
+                    git_addons=git_status(ROOT, GIT, subdir='github')
+                    bzr_addons=bzr_status(ROOT, LP)
+                if command=='push':
+                    git_addons=git_push(ROOT, GIT, subdir='github')
+                    bzr_addons=bzr_push(ROOT, LP)
                 if command=='write':
                     if site['daemon']:
                         file(site[site_name]['daemon_dest'],'wb').write( get_daemon(site[site_name]['server_dest'], site[site_name]['config_dest'], USER=USER,GROUP=GROUP,ROOT=ROOT)  )
                         subprocess.call( ("chmod +x %s"%site[site_name]['daemon_dest']).split() )
                     file(site[site_name]['wsgi_dest'],'wb').write( get_wsgi(site[site_name]['config_dest']) )
                     vhost = get_vhost(site_name, site[site_name]['server_dest'], ServerName, site[site_name]['wsgi_dest'] , IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, SSLCertificateKeyFile=SSLCertificateKeyFile, ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
-                    file(site[site_name]['vhost_dest'],'wb').write( vhost )        
+                    file(site[site_name]['vhost_dest'],'wb').write( vhost )
 
                     #for fn in generated_files:
                     #    print 50*'_'  ,fn, 50*'_'
