@@ -9,19 +9,22 @@ import subprocess
 import psycopg2
 import ConfigParser
 import socket
+from mako.template import Template
+from mako.runtime import Context
+from StringIO import StringIO
 
-if socket.gethostname() in ['asus','jetel']:
-    db_user='jan'
-    db_password=''
-    DEFAULT_USER='jan'
-    DEFAULT_GROUP='jan'
-    DEFAULT_ROOT='/home/openerp'
-else:
-    db_user='openerp'
-    db_password='openerp'   
-    DEFAULT_USER='openerp'
-    DEFAULT_GROUP='users'
-    DEFAULT_ROOT='/opt/openerp'
+def render_mako(template, context, fn=None):
+    t=Template(template)
+    if fn:
+        buf=open(fn,'wb')
+    else:
+        buf=StringIO()
+    ctx=Context(buf, **context)
+    t.render_context(ctx)
+    if fn:
+        buf.close()
+    else:
+        return buf.getvalue()
 
 def generate_config(addons, fn='server7devel.conf', options=None):
     c=ConfigParser.RawConfigParser()
@@ -33,8 +36,6 @@ def generate_config(addons, fn='server7devel.conf', options=None):
     #else:
     if 1:
         c.add_section('options')
-        if options is None:
-            options=DEFAULT_OPTIONS
         #c.set('options', 'db_host','127.0.0.1')
         for o,v in options:
             c.set('options', o,v)
@@ -161,7 +162,17 @@ DAEMON="""#!/bin/bash
 # Description:		Open ERP is a complete ERP and CRM software.
 ### END INIT INFO
 
-%s
+<%
+  import os
+  PATH="/sbin:/bin:/usr/sbin:/usr/bin"
+  DAEMON=os.path.join(server_path, 'openerp-server')
+  NAME="openerp-server"
+  DESC="openerp-server"
+  #CONFIG=${CONFIG}
+  USER=user
+  GROUP=group
+  OPENERP_LOG=os.path.join(ROOT,'server7daemon.log')
+%>
 
 test -x ${DAEMON} || exit 0
 
@@ -206,18 +217,7 @@ case "${1}" in
 		exit 1
 		;;
 esac
-
 exit 0
-"""
-
-DAEMON_CONF="""PATH=/sbin:/bin:/usr/sbin:/usr/bin
-DAEMON=%(server_path)s/openerp-server
-NAME=openerp-server
-DESC=openerp-server
-CONFIG=%(CONFIG)s
-USER=%(user)s
-GROUP=%(group)s
-OPENERP_LOG=%(ROOT)s/server7daemon.log
 """
 
 def get_daemon(server_path, prod_config, USER=None, GROUP=None, ROOT=None):
@@ -226,7 +226,7 @@ def get_daemon(server_path, prod_config, USER=None, GROUP=None, ROOT=None):
                user=USER,
                group=GROUP,
                ROOT=ROOT)
-    return DAEMON % (DAEMON_CONF % arg)
+    return render_mako(DAEMON, arg)
 
 WSGI_SCRIPT="""import sys
 import openerp
@@ -235,98 +235,65 @@ application = openerp.service.wsgi_server.application
 """ 
 
 def get_wsgi(prod_config):
-    return WSGI_SCRIPT % (prod_config)
+    return WSGI_SCRIPT % (prod_config,)
 
-VHOST="""<VirtualHost %(IP)s:%(PORT)s>
-        ServerName %(ServerName)s
-
-        #WSGIScriptAlias / %(ROOT)s/pjb_wsgi.py
-        WSGIScriptAlias / %(WSGIScriptAlias)s
-        WSGIDaemonProcess %(name)s user=%(user)s group=%(group)s processes=%(processes)s python-path=%(python_path)s display-name=%(name)s
-        WSGIProcessGroup %(name)s
-        <Directory %(python_path)s>
+VHOST="""<VirtualHost ${IP}:${PORT}>
+        ServerName ${ServerName}
+        %if ServerAlias
+            ServerAlias ${ServerAlias}
+        %endif
+        %if ssl:
+           SSLEngine on
+           SSLCertificateFile ${SSLCertificateFile}
+           SSLCertificateKeyFile ${SSLCertificateKeyFile}
+        %endif
+        <%
+          apache_log_dir="${APACHE_LOG_DIR}"
+        %>
+        WSGIScriptAlias / ${WSGIScriptAlias}
+        WSGIDaemonProcess ${name} user=${user} group=${group} processes=${processes} python-path=${python_path} display-name=${name}
+        WSGIProcessGroup ${name}
+        <Directory ${python_path}>
             Order allow,deny
             Allow from all
         </Directory>
-        ErrorLog ${APACHE_LOG_DIR}/openerp-%(name)s-error.log
+        ErrorLog ${apache_log_dir}/openerp-${name}-error.log
         # Possible values include: debug, info, notice, warn, error, crit,                                                                                                                                         
         # alert, emerg.                                                                                                                                                                                            
         LogLevel debug
-        CustomLog ${APACHE_LOG_DIR}/openerp-%(name)s.log combined
+        CustomLog ${apache_log_dir}/openerp-${name}.log combined
 </VirtualHost>
 """
 
-VHOST_SSL="""<VirtualHost %(IP)s:%(PORT)s>
-        ServerName %(ServerName)s
-
-        SSLEngine on
-        #SSLCertificateFile /etc/apache2/ssl/apache.crt
-        #SSLCertificateKeyFile /etc/apache2/ssl/apache.key
-        SSLCertificateFile %(SSLCertificateFile)s
-        SSLCertificateKeyFile %(SSLCertificateKeyFile)s
-
-        #WSGIScriptAlias / %(ROOT)s/pjb_wsgi.py
-        #WSGIScriptAlias / %(ROOT)s/projects/analogue_micro/apache.conf.py
-        WSGIScriptAlias / %(WSGIScriptAlias)s
-        WSGIDaemonProcess %(name)s user=%(user)s group=%(group)s processes=%(processes)s python-path=%(python_path)s display-name=%(name)s
-        WSGIProcessGroup %(name)s
-        <Directory %(python_path)s>
-            Order allow,deny
-            Allow from all
-        </Directory>
-        ErrorLog ${APACHE_LOG_DIR}/openerp-%(name)s-error.log
-        # Possible values include: debug, info, notice, warn, error, crit,                                                                                                                                         
-        # alert, emerg.                                                                                                                                                                                            
-        LogLevel debug
-        CustomLog ${APACHE_LOG_DIR}/openerp-%(name)s.log combined
-</VirtualHost>
-"""
+SELFSSL="openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/apache2/ssl/apache.key -out /etc/apache2/ssl/apache.crt"
 
 def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None, processes=2, SSLCertificateFile=None, SSLCertificateKeyFile=None, ssl=False, USER=None, GROUP=None, ROOT=None):
-    if not IP:
-        IP='127.0.0.1'
-    if ssl:
+    if ssl and ( not SSLCertificateFile ) and (not SSLCertificateKeyFile ):
+        SSLCertificateFile='/etc/apache2/ssl/apache.crt',
+        SSLCertificateKeyFile='/etc/apache2/ssl/apache.key'
+        if (not os.path.isfile(SSLCertificateFile) and not os.path.isfile(SSLCertificateKeyFile) ):
+            subprocess.call( SELFSSL.split() )        
         if not PORT:
             PORT='443'
-        if SSLCertificateFile and SSLCertificateKeyFile:
-            arg = dict(name=name,
-                       python_path=python_path, 
-                       ServerName=ServerName, 
-                       user=USER,
-                       group=GROUP,
-                       ROOT=ROOT,
-                       WSGIScriptAlias=WSGIScriptAlias, 
-                       IP=IP, PORT=PORT, 
-                       processes=processes,
-                       SSLCertificateFile=SSLCertificateFile,
-                       SSLCertificateKeyFile=SSLCertificateKeyFile)
-        else:
-            arg = dict(name=name,
-                       python_path=python_path, 
-                       ServerName=ServerName, 
-                       WSGIScriptAlias=WSGIScriptAlias, 
-                       IP=IP, PORT=PORT, 
-                       user=USER,
-                       group=GROUP,
-                       ROOT=ROOT,
-                       processes=processes,
-                       SSLCertificateFile='/etc/apache2/ssl/apache.crt',
-                       SSLCertificateKeyFile='/etc/apache2/ssl/apache.key')
-        return VHOST_SSL % arg
     else:
         if not PORT:
             PORT='80'
-        arg = dict(name=name,
-                   python_path=python_path, 
-                   ServerName=ServerName, 
-                   user=USER,
-                   group=GROUP,
-                   ROOT=ROOT,
-                   WSGIScriptAlias=WSGIScriptAlias, 
-                   IP=IP, PORT=PORT, 
-                   processes=processes)
-        
-        return VHOST % arg
+    if not IP:
+        IP='127.0.0.1'
+    arg = dict(name=name,
+               python_path=python_path, 
+               ServerName=ServerName, 
+               ssl=ssl,
+               user=USER,
+               group=GROUP,
+               ROOT=ROOT,
+               WSGIScriptAlias=WSGIScriptAlias, 
+               IP=IP, PORT=PORT, 
+               processes=processes,
+               SSLCertificateFile=SSLCertificateFile,
+               SSLCertificateKeyFile=SSLCertificateKeyFile)
+
+    return render_mako(VHOST, arg)
 
 user_list_sql="""SELECT u.usename AS "User name",
   u.usesysid AS "User ID",
@@ -364,26 +331,14 @@ def create_or_update_db_user(options):
         cr.execute("create user %s with password '%s'"  %( o['db_user'], o['db_password'] ) )
     cr.close()
     conn.commit()
-DEFAULT_OPTIONS=[('db_host', '127.0.0.1'),
-                 ('db_port', '5432'),
-                 ('db_user', db_user),
-                 ('unaccent','True'),
-                 ('db_password', db_password),
-                 ('xmlrpc_interface','0.0.0.0'),
-                 ('admin_passwd',db_password)]
+
 exit_commands=['db','branch','write','status','unlink','push','pull', 'show']
 def split_args(args):
     cmds=set(args).intersection(set(exit_commands))
     dbs=set(args)-cmds
     return list(cmds), list(dbs)
-def parse(sys_args, sites, ROOT=None, USER=None, GROUP=None):
+def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
     hostname=socket.gethostname()
-    if not ROOT:
-        ROOT=DEFAULT_ROOT
-    if not USER:
-        USER=DEFAULT_USER
-    if not GROUP:
-        GROUP=DEFAULT_GROUP   
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
     usage += "  Commands: %s \n" % (','.join(exit_commands) )
     parser = optparse.OptionParser(version='0.1', usage=usage)
@@ -393,6 +348,7 @@ def parse(sys_args, sites, ROOT=None, USER=None, GROUP=None):
             GIT=site['sw']['GIT']
             OPTIONS=site['options']
             ServerName=site['ServerName']
+            ServerAlias=site.get('ServerAlias',False)
             site_name=site['site_name']
             if not ServerName:
                 ServerName=name
@@ -400,8 +356,6 @@ def parse(sys_args, sites, ROOT=None, USER=None, GROUP=None):
             prod_config=os.path.join(ROOT, 'server7%s.conf'%name)
             git_addons=git_branch(ROOT, GIT, subdir='github', branch=False)
             bzr_addons=bzr_branch(ROOT, LP, branch=False)
-            if not OPTIONS:
-                OPTIONS=DEFAULT_OPTIONS
             wsgi_fn = os.path.join(ROOT, '%s_wsgi.py'%name )
             daemon_fn = '/etc/init.d/%s'%name
             vhost_fn = '/etc/apache2/sites-available/%s.conf'%name
