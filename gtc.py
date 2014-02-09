@@ -97,6 +97,17 @@ def git_push(ROOT, remote_branches,subdir='github'):
             args = ["git","push","origin", branch]
             subprocess.call(args)
             os.chdir(cwd)
+def git_pull(ROOT, remote_branches,subdir='github'):
+    for xxx in remote_branches:
+        rb, branch,addon_subdir,is_module_path = xxx
+        local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'git pull', local_dir
+            args = ["git","pull","origin", branch]
+            subprocess.call(args)
+            os.chdir(cwd)
    
 def git_branch(ROOT, remote_branches, subdir='github', branch=False):
     out=[]
@@ -141,6 +152,17 @@ def bzr_push(ROOT, remote_branches):
             os.chdir(local_dir)
             print 44*'_', 'bzr push', local_dir
             args = ["bzr","push", "--remember", rb]
+            subprocess.call(args)
+            os.chdir(cwd)
+def bzr_pull(ROOT, remote_branches):
+    for rb,local in remote_branches:
+        #rb, branch,addon_subdir,is_module_path = xxx
+        local_dir,p  = bzr_remote2local(ROOT,local)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'bzr pull', local_dir
+            args = ["bzr","pull", "--remember", rb]
             subprocess.call(args)
             os.chdir(cwd)
 
@@ -463,6 +485,9 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                 if command=='push':
                     git_addons=git_push(ROOT, GIT, subdir='github')
                     bzr_addons=bzr_push(ROOT, LP)
+                if command=='pull':
+                    git_addons=git_pull(ROOT, GIT, subdir='github')
+                    bzr_addons=bzr_pull(ROOT, LP)
                 if command=='write':
                     if site['daemon']:
                         file(site[site_name]['daemon_dest'],'wb').write( get_daemon(site[site_name]['server_dest'], site[site_name]['config_dest'], USER=USER,GROUP=GROUP,ROOT=ROOT)  )
