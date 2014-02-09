@@ -117,7 +117,7 @@ def bzr_status(ROOT, remote_branches):
         cwd=os.getcwd()
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
-            #print 44*'_', 'bzr', local_dir
+            print 44*'_', 'bzr', local_dir
             args = ["bzr","status"]
             subprocess.call(args)
             os.chdir(cwd)
