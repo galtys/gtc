@@ -283,7 +283,7 @@ def get_wsgi(prod_config):
 
 VHOST="""<VirtualHost ${IP}:${PORT}>
         ServerName ${ServerName}
-        %if ServerAlias
+        %if ServerAlias:
             ServerAlias ${ServerAlias}
         %endif
         %if ssl:
