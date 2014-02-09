@@ -313,9 +313,11 @@ SELFSSL="openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/apache
 
 def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None, processes=2, SSLCertificateFile=None, SSLCertificateKeyFile=None, ssl=False, USER=None, GROUP=None, ROOT=None):
     if ssl and ( not SSLCertificateFile ) and (not SSLCertificateKeyFile ):
-        SSLCertificateFile='/etc/apache2/ssl/apache.crt',
+        SSLCertificateFile='/etc/apache2/ssl/apache.crt'
         SSLCertificateKeyFile='/etc/apache2/ssl/apache.key'
         if (not os.path.isfile(SSLCertificateFile) and not os.path.isfile(SSLCertificateKeyFile) ):
+            if not os.path.isdir('/etc/apache2/ssl'):
+                os.makedirs('/etc/apache2/ssl')
             subprocess.call( SELFSSL.split() )        
         if not PORT:
             PORT='443'
@@ -457,7 +459,7 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
             GIT=site['sw']['GIT']
             IP=site['IP']
             PORT=site['PORT']
-            SSLCertificateFile=site['SSLCertificateFile'],
+            SSLCertificateFile=site['SSLCertificateFile']
             SSLCertificateKeyFile=site['SSLCertificateKeyFile']
             ssl=site['ssl']      
             ServerName=site['ServerName']
