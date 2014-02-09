@@ -57,7 +57,7 @@ def generate_config(addons, fn='server7devel.conf', options=None):
     return c, server_path
 
 #def vcs_status(ROOT, 
-def git_remote2local(ROOT, rb, subdir='github'):
+def git_remote2local(ROOT,rb, subdir='github'):
     rb, branch,addon_subdir,is_module_path = rb
     l=os.path.join(ROOT, subdir, *rb.split('/')[-2:])
     p=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path
@@ -103,28 +103,30 @@ def git_branch(ROOT, remote_branches, cmd='pull', subdir='github', branch=False)
             if branch:
                 ret=subprocess.call(args)
     return out
-def bzr_remote2local(ROOT, rb):
-    l=os.path.join(ROOT, *rb.split('/')[-2:] )
-    p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
-    return l,p
+def bzr_remote2local(ROOT, local):
+    #l=os.path.join(ROOT, *rb.split('/')[-2:] )
+    #p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
+    l=os.path.join(ROOT, local)
+    p=os.path.join(ROOT, *local.split('/')[:-1] )
+    return l,os.path.join(*p)
 def bzr_status(ROOT, remote_branches):
-    for xxx in remote_branches:
+    for rb,local in remote_branches:
         #rb, branch,addon_subdir,is_module_path = xxx
-        local_dir,p  = bzr_remote2local(ROOT,xxx)
+        local_dir,p  = bzr_remote2local(ROOT,local)
         cwd=os.getcwd()
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
-            print 44*'_', 'bzr', local_dir
+            #print 44*'_', 'bzr', local_dir
             args = ["bzr","status"]
             subprocess.call(args)
             os.chdir(cwd)
 
 def bzr_branch(ROOT, remote_branches, cmd='', branch=False): #for existing branches, cmd can be push or pull
     out=[]
-    for rb in remote_branches:
+    for rb,local in remote_branches:
         #l=os.path.join(ROOT, *rb.split('/')[-2:] )
         #p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
-        l,p = bzr_remote2local(ROOT,rb)
+        l,p = bzr_remote2local(ROOT,local)
         out.append(l)
         if os.path.isdir(l):
             #print 'exist'
@@ -369,122 +371,156 @@ DEFAULT_OPTIONS=[('db_host', '127.0.0.1'),
                  ('db_password', db_password),
                  ('xmlrpc_interface','0.0.0.0'),
                  ('admin_passwd',db_password)]
-
-
-def parse(name, sys_args, LP, GIT, OPTIONS=None, ServerName=None, IP='162.13.151.223', PORT='80', SSLCertificateFile=None, SSLCertificateKeyFile=None, ssl=True, ROOT=None, USER=None, GROUP=None):
+exit_commands=['db','branch','write','status','unlink','push','pull', 'show']
+def split_args(args):
+    cmds=set(args).intersection(set(exit_commands))
+    dbs=set(args)-cmds
+    return list(cmds), list(dbs)
+def parse(sys_args, sites, ROOT=None, USER=None, GROUP=None):
     hostname=socket.gethostname()
-    name=hostname+'_'+name
-
     if not ROOT:
         ROOT=DEFAULT_ROOT
-    if not ServerName:
-        ServerName=name
     if not USER:
         USER=DEFAULT_USER
     if not GROUP:
-        GROUP=DEFAULT_GROUP
-    prod_config=os.path.join(ROOT, 'server7%s.conf'%name)
-    git_addons=git_branch(ROOT, GIT, subdir='github', branch=False)
-    bzr_addons=bzr_branch(ROOT, LP, branch=False)
-    if not OPTIONS:
-        OPTIONS=DEFAULT_OPTIONS
-    wsgi_fn = os.path.join(ROOT, '%s_wsgi.py'%name )
-    daemon_fn = '/etc/init.d/%s'%name
-    vhost_fn = '/etc/apache2/sites-available/%s.conf'%name
-    nvh='/etc/apache2/conf.d/namevhosts_%s' % name
-    sn='/etc/apache2/conf.d/servername'
-    generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, prod_config]
-
-    conf, server_path = generate_config(bzr_addons+git_addons, prod_config , options=OPTIONS)
-    exit_commands=['db','branch','write','status','unlink','push','pull']
-    usage = "usage: python %prog [options] command [database_name]\n"
-    usage += "  Commands: script,%s \n" % (','.join(exit_commands) )
-    usage += "  Current config path: %s\n" % prod_config
-    usage += "  Current server path: %s\n" % server_path
-    usage += "Generated files:\n  " + '\n  '.join(generated_files)
+        GROUP=DEFAULT_GROUP   
+    usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
+    usage += "  Commands: %s \n" % (','.join(exit_commands) )
     parser = optparse.OptionParser(version='0.1', usage=usage)
-    group = optparse.OptionGroup(parser, "Common options")
-    parser.add_option_group(group)
-    
-    group.add_option("-s", "--server-pythonpath",
-                     dest="server_pythonpath",
-                     help="Specify the OpenERP path with the openerp server module [%default]",
-                     #default=os.path.join(os.environ['HOME'],'openerp6/server/7.0')
-                     #default=os.path.join('../server/70pjb')
-                     default=server_path
-                     )
-    group.add_option("-c", "--config",
-                     dest="config",
-                     help="Specify OpenERP Config file [%default]",
-                     default=prod_config)
-    # group.add_option("-d", "--daemon",
-    #                  dest="daemon",
-    #                  help="Generate write Daemon&apache files to /etc/init.d/openerp,/etc/apache2/sites-available/pjb.conf [%default] (yes|no)",
-    #                  default='no')
-    # group.add_option("-b", "--branch",
-    #                  dest="branch",
-    #                  help="branch, generate config and set db user [%default] (yes|no)",
-    #                  default='no')
-    # group.add_option("--cmd",
-    #                  dest="cmd",
-    #                  help="cmd to run, [%default] (push|pull)",
-    #                  default='')
-    # group.add_option("-u", "--unlink",
-    #                  dest="unlink",
-    #                  help="unlink files [%default] (yes|no)",
-    #                  default='no')
-    # group.add_option("-t", "--status",
-    #                  dest="status",
-    #                  help="status [%default] (yes|no)",
-    #                  default='no')
+    for site in sites:
+        if site['hostname']==socket.gethostname():
+            LP=site['sw']['LP']
+            GIT=site['sw']['GIT']
+            OPTIONS=site['options']
+            ServerName=site['ServerName']
+            site_name=site['site_name']
+            if not ServerName:
+                ServerName=name
+            name=hostname+'_'+site_name
+            prod_config=os.path.join(ROOT, 'server7%s.conf'%name)
+            git_addons=git_branch(ROOT, GIT, subdir='github', branch=False)
+            bzr_addons=bzr_branch(ROOT, LP, branch=False)
+            if not OPTIONS:
+                OPTIONS=DEFAULT_OPTIONS
+            wsgi_fn = os.path.join(ROOT, '%s_wsgi.py'%name )
+            daemon_fn = '/etc/init.d/%s'%name
+            vhost_fn = '/etc/apache2/sites-available/%s.conf'%name
+            nvh='/etc/apache2/conf.d/namevhosts_%s' % name
+            sn='/etc/apache2/conf.d/servername'
+            generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, prod_config]
 
+            conf, server_path = generate_config(bzr_addons+git_addons, prod_config , options=OPTIONS)
+            #usage += "  Current config path: %s\n" % prod_config
+            #usage += "  Current server path: %s\n" % server_path
+            #usage += "Generated files:\n  " + '\n  '.join(generated_files)
+
+            group = optparse.OptionGroup(parser, "Site [%s]"%site_name)
+            site[site_name]={}
+            site[site_name]['server_dest']="server_%s"%site_name
+            group.add_option("--server-%s"%site_name,
+                             dest=site[site_name]['server_dest'],
+                             help="Specify the OpenERP path with the openerp server module [%default]",
+                             default=server_path
+                             )
+            site[site_name]['config_dest']="config_%s"%site_name
+            group.add_option("--config-%s"%site_name,
+                             dest=site[site_name]['config_dest'],
+                             help="Specify OpenERP Config file [%default]",
+                             default=prod_config)
+            site[site_name]['wsgi_dest']="wsgi_%s"%site_name
+            group.add_option("--wsgi-%s"%site_name,
+                             dest=site[site_name]['wsgi_dest'],
+                             help="Wsgi file [%default]",
+                             default=wsgi_fn)
+            site[site_name]['daemon_dest']="daemon_%s"%site_name
+            group.add_option("--daemon-%s"%site_name,
+                             dest=site[site_name]['daemon_dest'],
+                             help="Daemon file [%default]",
+                             default=daemon_fn)
+            site[site_name]['vhost_dest']="vhost_%s"%site_name
+            group.add_option("--vhost-%s"%site_name,
+                             dest=site[site_name]['vhost_dest'],
+                             help="VHOST file [%default]",
+                             default=vhost_fn)
+            site[site_name]['nvh_dest']="nvh_%s"%site_name
+            group.add_option("--nvh-%s"%site_name,
+                             dest=site[site_name]['nvh_dest'],
+                             help="vnh file [%default]",
+                             default=nvh)       
+            parser.add_option_group(group)
     opt, args = parser.parse_args(sys_args)
-    generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, opt.config]
-    dbname=None
-    if len(args)==1:
-        command = args[0]
-    elif len(args)==2:
-        command,dbname=args
-    else:
-        parser.error("Command argument is required.")
+    cmds, dbs = split_args(args)
+    nvh={}
+    #print opt.__dict__
+    config=None
+    for site in sites:
+        if site['hostname']==socket.gethostname():
+            LP=site['sw']['LP']
+            GIT=site['sw']['GIT']
+            IP=site['IP']
+            PORT=site['PORT']
+            SSLCertificateFile=site['SSLCertificateFile'],
+            SSLCertificateKeyFile=site['SSLCertificateKeyFile']
+            ssl=site['ssl']      
+            ServerName=site['ServerName']
+            site_name=site['site_name']
+            v=nvh.setdefault( (IP,PORT), [] )
+            v.append(site_name)
+            for dest in ['server_dest','config_dest','wsgi_dest','daemon_dest','vhost_dest','nvh_dest']:
+                site_dest=site[site_name][dest]
+                fn=opt.__dict__[site_dest]
+                #print fn
+                site[site_name][dest]=fn
+            if site['parse_config']:
+                config=site[site_name]['config_dest']
+                sys.path.append(site[site_name]['server_dest'])
+            for command in cmds:
+                if command=='show':
+                    for dest in ['config_dest','wsgi_dest','daemon_dest','vhost_dest','nvh_dest']:
+                        fn=site[site_name][dest]
+                        if fn is None:
+                            fn=''
+                        print "%s %s" %(os.path.isfile(fn), fn)
+                if command=='status':
+                    git_addons=git_status(ROOT, GIT, subdir='github')   
+                    bzr_addons=bzr_status(ROOT, LP)   
+                if command=='write':
+                    if site['daemon']:
+                        file(site[site_name]['daemon_dest'],'wb').write( get_daemon(site[site_name]['server_dest'], site[site_name]['config_dest'], USER=USER,GROUP=GROUP,ROOT=ROOT)  )
+                        subprocess.call( ("chmod +x %s"%site[site_name]['daemon_dest']).split() )
+                    file(site[site_name]['wsgi_dest'],'wb').write( get_wsgi(site[site_name]['config_dest']) )
+                    vhost = get_vhost(site_name, site[site_name]['server_dest'], ServerName, site[site_name]['wsgi_dest'] , IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, SSLCertificateKeyFile=SSLCertificateKeyFile, ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
+                    file(site[site_name]['vhost_dest'],'wb').write( vhost )        
 
-    if command=='show':
-        for fn in generated_files:
-            print "%s %s" %(os.path.isfile(fn), fn)
-    if command=='status':
-        git_addons=git_status(ROOT, GIT, subdir='github')   
-        bzr_addons=bzr_status(ROOT, LP)   
-    if command=='write':
-        file(daemon_fn,'wb').write( get_daemon(opt.server_pythonpath, opt.config, USER=USER,GROUP=GROUP,ROOT=ROOT)  )
-        subprocess.call( ("chmod +x /%s"%daemon_fn).split() )
-        file(wsgi_fn,'wb').write( get_wsgi(opt.config) )
-        vhost = get_vhost(name, opt.server_pythonpath, ServerName, wsgi_fn , IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, SSLCertificateKeyFile=SSLCertificateKeyFile, ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
-        file(vhost_fn,'wb').write( vhost )        
-        if not ssl:
-            file(nvh,'wb').write('NameVirtualHost %s:%s\n'%(IP,PORT) )
-        file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
-        for fn in generated_files:
-            print 50*'_'  ,fn, 50*'_'
-            print file(fn).read()
-        sys.exit(0)
-    if command=='branch':
-        git_addons=git_branch(ROOT, GIT, subdir='github', branch=True)
-        bzr_addons=bzr_branch(ROOT, LP, branch=True)
-        conf, server_path = generate_config(bzr_addons+git_addons,opt.config , options=OPTIONS)
-        with open(opt.config, 'wb') as cf:
-            conf.write(cf)
-    if command=='db':
-        create_or_update_db_user(OPTIONS)
-    if command=='unlink':
-        for fn in [wsgi_fn, daemon_fn, vhost_fn, nvh, opt.config]:
-            try:
-                os.unlink(fn)
-                print 'Removed: ', fn
-            except:
-                print 'can not unlink ', fn
-    #print command,exit_commands
-    if command in exit_commands:
-        sys.exit(0)
-    return opt,args,parser,command,dbname
+                    #for fn in generated_files:
+                    #    print 50*'_'  ,fn, 50*'_'
+                    #    print file(fn).read()
+                    #sys.exit(0)
+                if command=='branch':
+                    git_addons=git_branch(ROOT, GIT, subdir='github', branch=True)
+                    bzr_addons=bzr_branch(ROOT, LP, branch=True)
+                    conf, server_path = generate_config(bzr_addons+git_addons,site[site_name]['config_dest'] , options=OPTIONS)
+                    with open(site[site_name]['config_dest'], 'wb') as cf:
+                        conf.write(cf)
+                if command=='db':
+                    create_or_update_db_user(OPTIONS)
+                if command=='unlink':
+                    for fn in [site[site_name]['wsgi_dest'], site[site_name]['daemon_dest'], site[site_name]['vhost_dest'], site[site_name]['nvh_dest'], site[site_name]['config_dest']]:
+                        try:
+                            os.unlink(fn)
+                            print 'Removed: ', fn
+                        except:
+                            print 'can not unlink ', fn
+                #print command,exit_commands
+                        
+    for command in cmds:
+        if command == 'write':
+            for k,v in nvh.items():
+                nvh='/etc/apache2/conf.d/namevhosts_%s' % v[0]
+                file(nvh,'wb').write('NameVirtualHost %s:%s\n'%k )
+            file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
+    if set(exit_commands).intersection(cmds):
+        sys.exit(0)            
+    return opt,args,parser,cmds,dbs,config
     
 #sudo install gtc.py /usr/local/lib/python2.7/dist-packages
