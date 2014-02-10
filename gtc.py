@@ -338,7 +338,6 @@ def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None
                processes=processes,
                SSLCertificateFile=SSLCertificateFile,
                SSLCertificateKeyFile=SSLCertificateKeyFile)
-
     return render_mako(VHOST, arg)
 
 user_list_sql="""SELECT u.usename AS "User name",
