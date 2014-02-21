@@ -130,8 +130,10 @@ def bzr_remote2local(ROOT, local):
     #l=os.path.join(ROOT, *rb.split('/')[-2:] )
     #p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
     l=os.path.join(ROOT, local)
-    p=os.path.join(ROOT, *local.split('/')[:-1] )
-    return l,os.path.join(*p)
+    x=local.split('/')[:-1]
+    #print x
+    p=os.path.join(ROOT, *x )
+    return l,os.path.join(p)
 def bzr_status(ROOT, remote_branches):
     for rb,local in remote_branches:
         #rb, branch,addon_subdir,is_module_path = xxx
