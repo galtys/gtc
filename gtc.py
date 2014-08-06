@@ -111,6 +111,7 @@ def git_pull(ROOT, remote_branches,subdir='github'):
    
 def git_branch(ROOT, remote_branches, subdir='github', branch=False):
     out=[]
+    create_branch=branch
     for xxx in remote_branches:
         rb, branch,addon_subdir,is_module_path = xxx
         local_dir, p, addon_path = git_remote2local(ROOT, xxx, subdir=subdir)
@@ -119,11 +120,12 @@ def git_branch(ROOT, remote_branches, subdir='github', branch=False):
             pass       
         else:
             if not os.path.isdir(local_dir):
-                os.makedirs(p) #create if it does not exist
+                if create_branch:
+                    os.makedirs(local_dir) #create if it does not exist
             #print [rb, p, l]
             args = ["git","clone","--branch",branch, rb,local_dir]
             #print "subprocess.call with args: ", args
-            if branch:
+            if create_branch:
                 ret=subprocess.call(args)
     return out
 def bzr_remote2local(ROOT, local):
@@ -293,6 +295,10 @@ VHOST="""<VirtualHost ${IP}:${PORT}>
            SSLCertificateFile ${SSLCertificateFile}
            SSLCertificateKeyFile ${SSLCertificateKeyFile}
         %endif
+        %if SSLCACertificateFile:
+           SSLCACertificateFile ${SSLCACertificateFile}
+        %endif
+
         <%
           apache_log_dir="${APACHE_LOG_DIR}"
         %>
@@ -313,7 +319,10 @@ VHOST="""<VirtualHost ${IP}:${PORT}>
 
 SELFSSL="openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/apache2/ssl/apache.key -out /etc/apache2/ssl/apache.crt"
 
-def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None, processes=2, SSLCertificateFile=None, SSLCertificateKeyFile=None, ssl=False, USER=None, GROUP=None, ROOT=None):
+def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None, processes=2, SSLCertificateFile=None, 
+              SSLCertificateKeyFile=None, 
+              SSLCACertificateFile=None,
+              ssl=False, USER=None, GROUP=None, ROOT=None):
     if ssl and ( not SSLCertificateFile ) and (not SSLCertificateKeyFile ):
         SSLCertificateFile='/etc/apache2/ssl/apache.crt'
         SSLCertificateKeyFile='/etc/apache2/ssl/apache.key'
@@ -328,6 +337,11 @@ def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None
             PORT='80'
     if not IP:
         IP='127.0.0.1'
+    if SSLCACertificateFile:
+        intermediate=True
+    else:
+        intermediate=False
+
     arg = dict(name=name,
                python_path=python_path, 
                ServerName=ServerName, 
@@ -339,7 +353,9 @@ def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None
                IP=IP, PORT=PORT, 
                processes=processes,
                SSLCertificateFile=SSLCertificateFile,
-               SSLCertificateKeyFile=SSLCertificateKeyFile)
+               SSLCertificateKeyFile=SSLCertificateKeyFile,
+               #intermediate=intermediate,
+               SSLCACertificateFile=SSLCACertificateFile)
     return render_mako(VHOST, arg)
 
 user_list_sql="""SELECT u.usename AS "User name",
@@ -360,7 +376,8 @@ def create_or_update_db_user(options):
     #    
     #else:
     conn_string = "host='%s' dbname='postgres' user='%s' password='%s'" % (o['db_host'], o['db_user'],o['db_password'] )
-    if 0:
+    if 1:
+        #print 'TRY: ', [conn_string]
         conn = psycopg2.connect(conn_string)
         cr = conn.cursor()
         print "user can connect"
@@ -453,15 +470,19 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
     cmds, dbs = split_args(args)
     nvh={}
     #print opt.__dict__
-    config=None
+    config=[]
     for site in sites:
         if site['hostname']==socket.gethostname():
+            import pprint
+            #pprint.pprint(site)
             LP=site['sw']['LP']
             GIT=site['sw']['GIT']
             IP=site['IP']
+            OPTIONS=site['options']
             PORT=site['PORT']
             SSLCertificateFile=site['SSLCertificateFile']
             SSLCertificateKeyFile=site['SSLCertificateKeyFile']
+            SSLCACertificateFile=site.get('SSLCACertificateFile')
             ssl=site['ssl']      
             ServerName=site['ServerName']
             site_name=site['site_name']
@@ -473,7 +494,7 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                 #print fn
                 site[site_name][dest]=fn
             if site['parse_config']:
-                config=site[site_name]['config_dest']
+                config.append(site[site_name]['config_dest'])
                 sys.path.append(site[site_name]['server_dest'])
             for command in cmds:
                 if command=='show':
@@ -496,9 +517,14 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                         file(site[site_name]['daemon_dest'],'wb').write( get_daemon(site[site_name]['server_dest'], site[site_name]['config_dest'], USER=USER,GROUP=GROUP,ROOT=ROOT)  )
                         subprocess.call( ("chmod +x %s"%site[site_name]['daemon_dest']).split() )
                     file(site[site_name]['wsgi_dest'],'wb').write( get_wsgi(site[site_name]['config_dest']) )
-                    vhost = get_vhost(site_name, site[site_name]['server_dest'], ServerName, site[site_name]['wsgi_dest'] , IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, SSLCertificateKeyFile=SSLCertificateKeyFile, ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
+                    vhost = get_vhost(site_name, site[site_name]['server_dest'], ServerName, site[site_name]['wsgi_dest'] , IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, SSLCertificateKeyFile=SSLCertificateKeyFile, SSLCACertificateFile=SSLCACertificateFile,ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
                     file(site[site_name]['vhost_dest'],'wb').write( vhost )
 
+                    git_addons=git_branch(ROOT, GIT, subdir='github', branch=False)
+                    bzr_addons=bzr_branch(ROOT, LP, branch=False)
+                    conf, server_path = generate_config(bzr_addons+git_addons,site[site_name]['config_dest'] , options=OPTIONS)
+                    with open(site[site_name]['config_dest'], 'wb') as cf:
+                        conf.write(cf)
                     #for fn in generated_files:
                     #    print 50*'_'  ,fn, 50*'_'
                     #    print file(fn).read()
@@ -507,8 +533,6 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                     git_addons=git_branch(ROOT, GIT, subdir='github', branch=True)
                     bzr_addons=bzr_branch(ROOT, LP, branch=True)
                     conf, server_path = generate_config(bzr_addons+git_addons,site[site_name]['config_dest'] , options=OPTIONS)
-                    with open(site[site_name]['config_dest'], 'wb') as cf:
-                        conf.write(cf)
                 if command=='db':
                     create_or_update_db_user(OPTIONS)
                 if command=='unlink':
@@ -528,6 +552,7 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
             file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
     if set(exit_commands).intersection(cmds):
         sys.exit(0)            
-    return opt,args,parser,cmds,dbs,config
+    assert len(config)==1
+    return opt,args,parser,cmds,dbs,config[0]
     
 #sudo install gtc.py /usr/local/lib/python2.7/dist-packages
