@@ -108,14 +108,30 @@ def git_pull(ROOT, remote_branches,subdir='github'):
             args = ["git","pull","origin", branch]
             subprocess.call(args)
             os.chdir(cwd)
-   
+def is_module(p):
+    ret=False
+    if os.path.isdir(p):
+        init=os.path.join(p,'__init__.py')
+        if os.path.isfile(init):
+            terp=[os.path.join(p,'__openerp__.py'),
+                  os.path.join(p,'__terp__.py'),
+                  os.path.join(p,'__odoo__.py')]
+            for t in terp:
+                if os.path.isfile(t):
+                    ret=True
+    return ret
 def git_branch(ROOT, remote_branches, subdir='github', branch=False):
     out=[]
     create_branch=branch
     for xxx in remote_branches:
         rb, branch,addon_subdir,is_module_path = xxx
         local_dir, p, addon_path = git_remote2local(ROOT, xxx, subdir=subdir)
-        out.append(addon_path)
+        addon_path_norm=os.path.normpath(addon_path)
+        if is_module(addon_path_norm):
+            add_p='/'.join( addon_path_norm.split('/')[:-1] )
+        else:
+            add_p=addon_path_norm
+        out.append(add_p)
         if os.path.isdir(local_dir):
             pass       
         else:
