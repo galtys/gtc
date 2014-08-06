@@ -559,13 +559,17 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                         except:
                             print 'can not unlink ', fn
                 #print command,exit_commands
-                        
+    #print 'nvh: ',nvh
     for command in cmds:
         if command == 'write':
+            k_out=''
             for k,v in nvh.items():
-                nvh='/etc/apache2/conf.d/namevhosts_%s' % v[0]
-                file(nvh,'wb').write('NameVirtualHost %s:%s\n'%k )
+                k_out+='NameVirtualHost %s:%s\n'%k
+            nvh='/etc/apache2/conf.d/namevhosts'
+            print 'Updating', nvh
+            file(nvh, 'wb').write(k_out)
             file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
+            print 'Updating', sn
     if set(exit_commands).intersection(cmds):
         sys.exit(0)            
     assert len(config)==1
