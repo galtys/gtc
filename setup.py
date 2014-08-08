@@ -7,7 +7,7 @@ setup(
     author='Jan Troler',
     author_email='jan.troler@galtys.com',
     url='git@codebasehq.com:galtys/galtys/gtc.git',
-    packages=['gtc'],
+    packages=['gtclib'],
     install_requires=[
         #'requests>=2.0.1',
     ],
