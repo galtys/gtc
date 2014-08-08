@@ -434,20 +434,20 @@ def split_args(args):
 def parse(sys_args, sites, USER=None, GROUP=None, ROOT=None):
     hostname=socket.gethostname()
     import getpass
-    getpass_user=getpass.getuser()
+    current_login=getpass.getuser()
     if ROOT is None:
         ROOT=os.environ['HOME']
     if USER is None:
-        USER=getpass_user
+        USER=current_login
     if GROUP is None:
         import grp,pwd
-        GROUP=pwd.getpwnam(getpass_user).pw_name
+        GROUP=pwd.getpwnam(current_login).pw_name
 
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
     usage += "  Commands: %s \n" % (','.join(exit_commands) )
     parser = optparse.OptionParser(version='0.1', usage=usage)
     for site in sites:
-        if site['hostname']==socket.gethostname():
+        if site['hostname']==socket.gethostname()  and current_login==site['login']:
             LP=site['sw']['LP']
             GIT=site['sw']['GIT']
             OPTIONS=site['options']
@@ -512,7 +512,7 @@ def parse(sys_args, sites, USER=None, GROUP=None, ROOT=None):
     #print opt.__dict__
     config=[]
     for site in sites:
-        if site['hostname']==socket.gethostname():
+        if site['hostname']==socket.gethostname() and current_login==site['login']:
             import pprint
             LP=site['sw']['LP']
             GIT=site['sw']['GIT']
