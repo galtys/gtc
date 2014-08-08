@@ -26,7 +26,7 @@ def render_mako(template, context, fn=None):
     else:
         return buf.getvalue()
 
-def generate_config(addons, fn='server7devel.conf', options=None):
+def generate_config(addons, fn='server7devel.conf', logfile=None, options=None):
     c=ConfigParser.RawConfigParser()
     cfn=os.path.join(fn)
     server_path=None
@@ -55,6 +55,8 @@ def generate_config(addons, fn='server7devel.conf', options=None):
             else:
                 addons_path.append(a)
     c.set('options', 'addons_path', ','.join(addons_path) )
+    if logfile is not None:
+        c.set('options', 'logfile', logfile)
     return c, server_path
 
 #def vcs_status(ROOT, 
@@ -299,7 +301,7 @@ application = openerp.service.wsgi_server.application
 """ 
 
 def get_wsgi(prod_config):
-    return WSGI_SCRIPT % (prod_config,)
+    return WSGI_SCRIPT % (prod_config)
 
 VHOST="""<VirtualHost ${IP}:${PORT}>
         ServerName ${ServerName}
@@ -314,7 +316,13 @@ VHOST="""<VirtualHost ${IP}:${PORT}>
         %if SSLCACertificateFile:
            SSLCACertificateFile ${SSLCACertificateFile}
         %endif
-
+        %if ProxPass:
+            ProxyPass / ${ProxyPass}
+            ProxyPassReverse / ${ProxyPass}
+        %elif Redirect:
+            #Redirect permanent / https://secure.example.com/
+            Redirect / ${Redirect}
+        %else:
         <%
           apache_log_dir="${APACHE_LOG_DIR}"
         %>
@@ -330,6 +338,8 @@ VHOST="""<VirtualHost ${IP}:${PORT}>
         # alert, emerg.                                                                                                                                                                                            
         LogLevel debug
         CustomLog ${apache_log_dir}/openerp-${name}.log combined
+
+        %endif
 </VirtualHost>
 """
 
@@ -338,6 +348,8 @@ SELFSSL="openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/apache
 def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None, processes=2, SSLCertificateFile=None, 
               SSLCertificateKeyFile=None, 
               SSLCACertificateFile=None,
+              ProxyPass=None,
+              Redirect=None,
               ssl=False, USER=None, GROUP=None, ROOT=None):
     if ssl and ( not SSLCertificateFile ) and (not SSLCertificateKeyFile ):
         SSLCertificateFile='/etc/apache2/ssl/apache.crt'
@@ -369,6 +381,8 @@ def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None
                IP=IP, PORT=PORT, 
                processes=processes,
                SSLCertificateFile=SSLCertificateFile,
+               ProxyPass=ProxyPass,
+               Redirect=Redirect,
                SSLCertificateKeyFile=SSLCertificateKeyFile,
                #intermediate=intermediate,
                SSLCACertificateFile=SSLCACertificateFile)
@@ -417,8 +431,18 @@ def split_args(args):
     cmds=set(args).intersection(set(exit_commands))
     dbs=set(args)-cmds
     return list(cmds), list(dbs)
-def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
+def parse(sys_args, sites, USER=None, GROUP=None, ROOT=None):
     hostname=socket.gethostname()
+    import getpass
+    getpass_user=getpass.getuser()
+    if ROOT is None:
+        ROOT=os.environ['HOME']
+    if USER is None:
+        USER=getpass_user
+    if GROUP is None:
+        import grp,pwd
+        GROUP=pwd.getpwnam(getpass_user).pw_name
+
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
     usage += "  Commands: %s \n" % (','.join(exit_commands) )
     parser = optparse.OptionParser(version='0.1', usage=usage)
@@ -442,7 +466,7 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
             nvh='/etc/apache2/conf.d/namevhosts_%s' % name
             sn='/etc/apache2/conf.d/servername'
             generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, prod_config]
-
+            wsgi_server_log_file =os.path.join(ROOT, 'server_wsgi_%s.log'%site_name)
             conf, server_path = generate_config(bzr_addons+git_addons, prod_config , options=OPTIONS)
             #usage += "  Current config path: %s\n" % prod_config
             #usage += "  Current server path: %s\n" % server_path
@@ -490,7 +514,6 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
     for site in sites:
         if site['hostname']==socket.gethostname():
             import pprint
-            #pprint.pprint(site)
             LP=site['sw']['LP']
             GIT=site['sw']['GIT']
             IP=site['IP']
@@ -499,11 +522,15 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
             SSLCertificateFile=site['SSLCertificateFile']
             SSLCertificateKeyFile=site['SSLCertificateKeyFile']
             SSLCACertificateFile=site.get('SSLCACertificateFile')
+            Redirect=site.get('Redirect')
+            ProxyPass=site.get('ProxyPass')
             ssl=site['ssl']      
             ServerName=site['ServerName']
             site_name=site['site_name']
             v=nvh.setdefault( (IP,PORT), [] )
             v.append(site_name)
+            wsgi_server_log_file =os.path.join(ROOT, 'server_wsgi_%s.log'%site_name)
+
             for dest in ['server_dest','config_dest','wsgi_dest','daemon_dest','vhost_dest','nvh_dest']:
                 site_dest=site[site_name][dest]
                 fn=opt.__dict__[site_dest]
@@ -514,7 +541,7 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                 sys.path.append(site[site_name]['server_dest'])
             for command in cmds:
                 if command=='show':
-                    for dest in ['config_dest','wsgi_dest','daemon_dest','vhost_dest','nvh_dest']:
+                    for dest in ['config_dest','wsgi_dest','daemon_dest','vhost_dest']:
                         fn=site[site_name][dest]
                         if fn is None:
                             fn=''
@@ -532,8 +559,14 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                     if site['daemon']:
                         file(site[site_name]['daemon_dest'],'wb').write( get_daemon(site[site_name]['server_dest'], site[site_name]['config_dest'], USER=USER,GROUP=GROUP,ROOT=ROOT)  )
                         subprocess.call( ("chmod +x %s"%site[site_name]['daemon_dest']).split() )
+
                     file(site[site_name]['wsgi_dest'],'wb').write( get_wsgi(site[site_name]['config_dest']) )
-                    vhost = get_vhost(site_name, site[site_name]['server_dest'], ServerName, site[site_name]['wsgi_dest'] , IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, SSLCertificateKeyFile=SSLCertificateKeyFile, SSLCACertificateFile=SSLCACertificateFile,ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
+                    vhost = get_vhost(site_name, site[site_name]['server_dest'], ServerName, site[site_name]['wsgi_dest'] , 
+                                      IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, 
+                                      SSLCertificateKeyFile=SSLCertificateKeyFile, SSLCACertificateFile=SSLCACertificateFile,
+                                      ProxyPass=ProxyPass,
+                                      Redirect=Redirect,
+                                      ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
                     file(site[site_name]['vhost_dest'],'wb').write( vhost )
 
                     git_addons=git_branch(ROOT, GIT, subdir='github', branch=False)
@@ -548,7 +581,7 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
                 if command=='branch':
                     git_addons=git_branch(ROOT, GIT, subdir='github', branch=True)
                     bzr_addons=bzr_branch(ROOT, LP, branch=True)
-                    conf, server_path = generate_config(bzr_addons+git_addons,site[site_name]['config_dest'] , options=OPTIONS)
+                    #conf, server_path = generate_config(bzr_addons+git_addons,site[site_name]['config_dest'] , options=OPTIONS)
                 if command=='db':
                     create_or_update_db_user(OPTIONS)
                 if command=='unlink':
@@ -571,8 +604,25 @@ def parse(sys_args, sites, USER='openerp', GROUP='users', ROOT='/opt/openerp'):
             file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
             print 'Updating', sn
     if set(exit_commands).intersection(cmds):
-        sys.exit(0)            
-    assert len(config)==1
-    return opt,args,parser,cmds,dbs,config[0]
+        sys.exit(0)
+    if len(config)==1:
+        return opt,args,parser,cmds,dbs,config[0]
+    else:
+        #assert len(config)==1
+        if config:
+            print "There are multiple config files for your host available: "
+            for i,c in enumerate(config):
+                print "  %d) %s" % (i,c)
+            user=raw_input('Please select:')
+            return opt,args,parser,cmds,dbs,config[ int(user) ]
+        else:
+            print 'No config to use on your host'
+        
     
+def get_sites():
+    import gtc_sites
+    return gtc_sites.sites
 #sudo install gtc.py /usr/local/lib/python2.7/dist-packages
+
+if __name__ == '__main__':
+    opt,args,parser,cmds,dbs,config = parse(sys.argv[1:], get_sites() )
