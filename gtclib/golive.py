@@ -15,7 +15,7 @@ from StringIO import StringIO
 import base64
 import json
 import requests
-
+import getpass
 import xmlrpclib
 
 
@@ -31,6 +31,17 @@ def render_mako(template, context, fn=None):
         buf.close()
     else:
         return buf.getvalue()
+sock=None
+opt=None
+uid=None
+def read(model,ids,fnames):
+#    return sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['git_clone','mkdir'])
+    print opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames
+    return sock.execute(opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames)
+
+def search(model, domain):
+    return sock.execute(opt.dbname, uid, opt.passwd, model, 'search', domain)
+    
 def is_module(p):
     ret=False
     if os.path.isdir(p):
@@ -44,178 +55,91 @@ def is_module(p):
                     ret=True
     return ret
 
-
-def generate_config(addons, fn='server7devel.conf', logfile=None, options=None):
-    c=ConfigParser.RawConfigParser()
-    cfn=os.path.join(fn)
+def get_server(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
     server_path=None
     spcnt=0 #allow only one server path
-    #if os.path.isfile(cfn):       
-    #pass#    c.read(cfn)
-    #else:
-    if 1:
-        c.add_section('options')
-        #c.set('options', 'db_host','127.0.0.1')
-        for o,v in options:
-            c.set('options', o,v)
-    addons_path=[]
-    for a in addons:
+    for c in items:
+        a=get_local_dir(c) 
         if os.path.isdir(a):
             server=os.path.join(a,'openerp/addons/base')
-            web=os.path.join(a, 'addons/web')
-            add=os.path.join(a, 'addons')
+            #web=os.path.join(a, 'addons/web')
+            #add=os.path.join(a, 'addons')
             if os.path.isdir(server):
                 server_path=a
                 spcnt+=1
                 if spcnt>1:
                     raise ValueError("only one server path allowed")
-            elif os.path.isdir(web) or os.path.isdir(add):
+
+    return server_path
+    
+def get_addons(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','addon_subdir'] )
+    addons_path=[]
+    for c in items:
+        a=get_local_dir(c) 
+        print 'LOCAL DIR', a
+        if os.path.isdir(a):
+            web=os.path.join(a, 'addons/web')
+            add=os.path.join(a, 'addons')
+            if c['addon_subdir']:
+                add2=os.path.join(a, c['addon_subdir'] )
+            else:
+                add2=''
+
+            if os.path.isdir(web) or os.path.isdir(add):
                 addons_path.append(os.path.join(a,'addons'))
+            elif os.path.isdir(add2):
+                addons_path.append(add2)
             else:
                 addons_path.append(a)
-    c.set('options', 'addons_path', ','.join(addons_path) )
+    return addons_path
+def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
+    c=ConfigParser.RawConfigParser()
+    cfn=os.path.join(fn)
+    if 1:
+        c.add_section('options')
+        for o,v in options:
+            c.set('options', o,v)
+    c.set('options', 'addons_path', ','.join(addons) )
     if logfile is not None:
         c.set('options', 'logfile', logfile)
-    return c, server_path
-
-#def vcs_status(ROOT, 
-def git_remote2local(ROOT,rb, subdir='github'):
-    rb, branch,addon_subdir,is_module_path = rb
-    l=os.path.join(ROOT, subdir, *rb.split('/')[-2:])
-    p=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path
-    if is_module_path:
-        addon=l
+    return c
+def generate_config(clone_ids,options, fn=None, logfile=None):
+    addons=get_addons(clone_ids)
+    print addons
+    c=create_odoo_config(options,addons,fn=fn,logfile=logfile)
+    return c
+def get_local_dir(item):
+    #current_login=getpass.getuser()
+    HOME=os.environ['HOME']
+    l=item['local_location_fnc']
+    if l.startswith('/'):
+        return l
     else:
-        addon = os.path.join(l,addon_subdir)
-    #if is_module_path:
-        #pp=os.path.join(ROOT,subdir, *rb.split('/')[-2:-1]) #parent path        
-    #    out.append(p)
-    #else:
-        #x=[ROOT, subdir] + rb.split('/')[-2:]
-        #ll=os.path.join(*x)
-    #    out.append(l)
-    pp = os.path.join(p, addon)
-    return (l,p,pp) #directory, addon path
-   
-def git_branch2(ROOT, remote_branches, subdir='github', branch=False):
-    out=[]
-    create_branch=branch
-    for xxx in remote_branches:
-        rb, branch,addon_subdir,is_module_path = xxx
-        local_dir, p, addon_path = git_remote2local(ROOT, xxx, subdir=subdir)
-        addon_path_norm=os.path.normpath(addon_path)
-        if is_module(addon_path_norm):
-            add_p='/'.join( addon_path_norm.split('/')[:-1] )
-        else:
-            add_p=addon_path_norm
-        out.append(add_p)
+        return os.path.join(HOME,l)
+
+def git_clone(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','branch'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)      
+        url=c['url']
+        branch=c['branch']
         if os.path.isdir(local_dir):
             pass       
         else:
             if not os.path.isdir(local_dir):
-                if create_branch:
-                    os.makedirs(local_dir) #create if it does not exist
-            #print [rb, p, l]
-            args = ["git","clone","--branch",branch, rb,local_dir]
-            #print "subprocess.call with args: ", args
-            if create_branch:
-                ret=subprocess.call(args)
-    return out
-def git_clone(records):
-    pass
-dbname='galtys_website'
-sock_common = xmlrpclib.ServerProxy ('http://golive-ontime.co.uk:8066/xmlrpc/common')
-uid = sock_common.login(dbname, 'admin','g77')
-#replace localhost with the address of the server
-sock = xmlrpclib.ServerProxy('http://golive-ontime.co.uk:8066/xmlrpc/object')
-
-#git
-clone_ids=sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'search', [('repository_id.type','=','git')])
-url = sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['git_clone','mkdir'])
-for c in url:
-    print c['mkdir']
-    print c['git_clone']
-
-#lp
-clone_ids=sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'search', [('repository_id.type','=','bzr')])
-url = sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['url','local_location_fnc'])
-for c in url:
-    print "#bzr url,local: %s,%s"%(c['url'], c['local_location_fnc'])
-
-
-sys.exit(0)
-
-
-def git_status(ROOT, remote_branches,subdir='github'):
-    for xxx in remote_branches:
-        #rb, branch,addon_subdir,is_module_path = xxx
-        local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
-        cwd=os.getcwd()
-        if os.path.isdir(local_dir):
-            os.chdir(local_dir)
-            print 44*'_', 'git', local_dir
-            args = ["git","status","--branch"]
-            subprocess.call(args)
-            os.chdir(cwd)
-def git_push(ROOT, remote_branches,subdir='github'):
-    for xxx in remote_branches:
-        rb, branch,addon_subdir,is_module_path = xxx
-        local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
-        cwd=os.getcwd()
-        if os.path.isdir(local_dir):
-            os.chdir(local_dir)
-            print 44*'_', 'git push', local_dir
-            args = ["git","push","origin", branch]
-            subprocess.call(args)
-            os.chdir(cwd)
-def git_pull(ROOT, remote_branches,subdir='github'):
-    for xxx in remote_branches:
-        rb, branch,addon_subdir,is_module_path = xxx
-        local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
-        cwd=os.getcwd()
-        if os.path.isdir(local_dir):
-            os.chdir(local_dir)
-            print 44*'_', 'git pull', local_dir
-            args = ["git","pull","origin", branch]
-            subprocess.call(args)
-            os.chdir(cwd)
-
-
-
-def bzr_remote2local(ROOT, local):
-    #l=os.path.join(ROOT, *rb.split('/')[-2:] )
-    #p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
-    l=os.path.join(ROOT, local)
-    x=local.split('/')[:-1]
-    #print x
-    p=os.path.join(ROOT, *x )
-    return l,os.path.join(p)
-def bzr_status(ROOT, remote_branches):
-    for rb,local in remote_branches:
-        #rb, branch,addon_subdir,is_module_path = xxx
-        local_dir,p  = bzr_remote2local(ROOT,local)
-        cwd=os.getcwd()
-        if os.path.isdir(local_dir):
-            os.chdir(local_dir)
-            print 44*'_', 'bzr', local_dir
-            args = ["bzr","status"]
-            subprocess.call(args)
-            os.chdir(cwd)
-def bzr_push(ROOT, remote_branches):
-    for rb,local in remote_branches:
-        #rb, branch,addon_subdir,is_module_path = xxx
-        local_dir,p  = bzr_remote2local(ROOT,local)
-        cwd=os.getcwd()
-        if os.path.isdir(local_dir):
-            os.chdir(local_dir)
-            print 44*'_', 'bzr push', local_dir
-            args = ["bzr","push", "--remember", rb]
-            subprocess.call(args)
-            os.chdir(cwd)
-def bzr_pull(ROOT, remote_branches):
-    for rb,local in remote_branches:
-        #rb, branch,addon_subdir,is_module_path = xxx
-        local_dir,p  = bzr_remote2local(ROOT,local)
+                #if create_branch:
+                os.makedirs(local_dir) #create if it does not exist
+            args = ["git","clone","--branch",branch, url,local_dir]
+            ret=subprocess.call(args)
+                #return out
+def bzr_pull(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)                
         cwd=os.getcwd()
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
@@ -224,31 +148,106 @@ def bzr_pull(ROOT, remote_branches):
             subprocess.call(args)
             os.chdir(cwd)
 
-def bzr_branch(ROOT, remote_branches, cmd='', branch=False): #for existing branches, cmd can be push or pull
-    out=[]
-    for rb,local in remote_branches:
-        #l=os.path.join(ROOT, *rb.split('/')[-2:] )
-        #p=os.path.join(ROOT, *rb.split('/')[-2:-1] ) #parent path
-        l,p = bzr_remote2local(ROOT,local)
-        out.append(l)
-        if os.path.isdir(l):
-            #print 'exist'
-            pass
-            #if cmd in ['pull','push']:
-            #    r=Branch.open(rb) #remote branch
-            #    b=Branch.open(l)  #local branch
-            #    if cmd=='pull':
-            #        b.pull(r)
-            #    if cmd=='push':
-            #        b.push(r)
-        else:
-            if branch:
-                if not os.path.isdir(p):
-                    os.makedirs(p) #create if it does not exist
-                #print 'does not exist',  [rb, p, l]
-                r=Branch.open(rb) #remote branch            
-                new=r.bzrdir.sprout(l) #new loca branch
-    return out
+def get_parent_dir(path):
+    arg=path.split('/')[-2:-1]
+    arg=['/']+path.split('/')[:-1]
+    p=os.path.join(*arg )
+    #print 'Parent Dir for ', path, arg,p
+    return p
+
+def bzr_branch(clone_ids): #for existing branches, cmd can be push or pull
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)                
+        url=c['url']
+        p=get_parent_dir(local_dir)
+        if not os.path.isdir(p):
+            os.makedirs(p) #create if it does not exist
+            #    #print 'does not exist',  [rb, p, l]
+            r=Branch.open(url) #remote branch            
+            new=r.bzrdir.sprout(local_dir) #new loca branch
+#    return out
+
+#def bzr_branch():
+#    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+#    for c in items:
+#        print "#bzr url,local: %s,%s"%(c['url'], c['local_location_fnc'])
+#        local=get_local_dir(c)       
+
+def git_status(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['local_location_fnc'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)      
+        #rb, branch,addon_subdir,is_module_path = xxx
+        #local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'git', local_dir
+            args = ["git","status","--branch"]
+            subprocess.call(args)
+            os.chdir(cwd)
+def bzr_status(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)        
+#
+#    for rb,local in remote_branches:
+        #rb, branch,addon_subdir,is_module_path = xxx
+        #local_dir,p  = bzr_remote2local(ROOT,local)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'bzr', local_dir
+            args = ["bzr","status"]
+            subprocess.call(args)
+            os.chdir(cwd)
+
+def git_push(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)        
+        #rb, branch,addon_subdir,is_module_path = xxx
+        #local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'git push', local_dir
+            args = ["git","push","origin", branch]
+            subprocess.call(args)
+            os.chdir(cwd)
+def bzr_push(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)        
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'bzr push', local_dir
+            args = ["bzr","push", "--remember", rb]
+            subprocess.call(args)
+            os.chdir(cwd)
+
+def git_pull(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)        
+#    for xxx in remote_branches:
+ #       rb, branch,addon_subdir,is_module_path = xxx
+  #      local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
+        cwd=os.getcwd()
+        if os.path.isdir(local_dir):
+            os.chdir(local_dir)
+            print 44*'_', 'git pull', local_dir
+            args = ["git","pull","origin", branch]
+            subprocess.call(args)
+            os.chdir(cwd)
 
 DAEMON="""#!/bin/bash
 
@@ -467,7 +466,15 @@ def split_args(args):
     cmds=set(args).intersection(set(exit_commands))
     dbs=set(args)-cmds
     return list(cmds), list(dbs)
-def parse(sys_args, sites, USER=None, GROUP=None, ROOT=None):
+def git_search():   
+    return search('deploy.repository.clone',[('repository_id.type','=','git')] )
+
+def bzr_search():
+    return search('deploy.repository.clone',[('repository_id.type','=','bzr')] )
+def deploy_search():
+    return 
+
+def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     hostname=socket.gethostname()
     import getpass
     current_login=getpass.getuser()
@@ -478,10 +485,99 @@ def parse(sys_args, sites, USER=None, GROUP=None, ROOT=None):
     if GROUP is None:
         import grp,pwd
         GROUP=pwd.getpwnam(current_login).pw_name
-
+    hostname=socket.gethostname()
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
     usage += "  Commands: %s \n" % (','.join(exit_commands) )
     parser = optparse.OptionParser(version='0.1', usage=usage)
+
+    group = optparse.OptionGroup(parser, "Login")
+    #site[site_name]={}
+    #site[site_name]['server_dest']="server_%s"%site_name
+    group.add_option("--api-url",
+                     dest='apiurl',
+                     help="Default: [%default]",
+                     default='http://golive-ontime.co.uk:8066/'
+                     )
+    group.add_option("--login",
+                     dest='login',
+                     help="Default: [%default]",
+                     default='admin'
+                     )
+    group.add_option("--pass",
+                     dest='passwd',
+                     help="Default: [%default]",
+                     default='g77'
+                     )
+    group.add_option("--dbname",
+                     dest='dbname',
+                     help="Default: [%default]",
+                     default='galtys_website'
+                     )
+    group.add_option("--subdir",
+                     dest='subdir',
+                     help="Default: [%default]",
+                     default='projects'
+                     )
+
+    parser.add_option_group(group)
+    global uid
+    global sock
+    global opt
+    opt, args = parser.parse_args(sys_args)
+    key=getpass.getpass()
+    cmds, dbs = split_args(args)
+    ROOT=os.path.join(ROOT, opt.subdir)
+    if not os.path.isdir(ROOT):
+        os.makedirs(ROOT) #create if it does not exist
+
+    sock_common = xmlrpclib.ServerProxy (opt.apiurl+'xmlrpc/common')
+
+    uid = sock_common.login(opt.dbname, opt.login,opt.passwd)
+    sock = xmlrpclib.ServerProxy(opt.apiurl+'xmlrpc/object')
+    if 1: #repo
+        git_ids=git_search()
+        bzr_ids=bzr_search()
+        clone_ids=git_ids+bzr_ids
+    if len(args)==1:
+        cmd=args[0]
+        if cmd=='clone':
+            git_clone(git_ids)
+            bzr_branch(bzr_ids)
+        elif cmd=='status':
+            git_status(git_ids)
+            bzr_status(bzr_ids)
+        elif cmd=='pull':
+            git_pull(git_ids)
+            bzr_pull(git_ids)
+    elif len(args) in [2,3]:
+        cmd,cmd2=args
+        #import simplecrypt
+        from simplecrypt import encrypt, decrypt
+        import base64
+        #ciphertext = encrypt('password', plaintext)
+        #plaintext = decrypt('password', ciphertext)
+        if cmd=='config':
+            deploy_ids=search('deploy.deploy',[] )
+            dps=read('deploy.deploy',deploy_ids,['site_name',
+                                                 'options',
+                                                 'db_password',
+                                                 'admin_password'])
+            for d in dps:
+                name=d['site_name']
+                prod_config=os.path.join(ROOT, 'server7%s.conf'%name)
+                with open(prod_config, 'wb') as cf:
+                    print 'writing config: ', prod_config
+                    options=eval(d['options'])
+                    db_pass=d['db_password']
+                    admin_pass=d['admin_password']
+                    db_pass=base64.decodestring(db_pass)
+                    admin_pass=base64.decodestring(admin_pass)
+                    options.append( ('db_password', decrypt(key,db_pass)) )
+                    options.append( ('admin_password', decrypt(key,admin_pass)) )
+                    conf=generate_config(clone_ids,options)
+                    conf.write(cf)
+
+    return
     for site in sites:
         if site['hostname']==socket.gethostname()  and current_login==site['login']:
             LP=site['sw']['LP']
@@ -542,8 +638,6 @@ def parse(sys_args, sites, USER=None, GROUP=None, ROOT=None):
                              help="vnh file [%default]",
                              default=nvh)       
             parser.add_option_group(group)
-    opt, args = parser.parse_args(sys_args)
-    cmds, dbs = split_args(args)
     nvh={}
     #print opt.__dict__
     config=[]
@@ -667,4 +761,5 @@ def get_sites():
 #sudo install gtc.py /usr/local/lib/python2.7/dist-packages
 
 if __name__ == '__main__':
-    opt,args,parser,cmds,dbs,config = parse(sys.argv[1:], get_sites() )
+    #opt,args,parser,cmds,dbs,config = parse(sys.argv[1:], get_sites() )
+    parse(sys.argv[1:])
