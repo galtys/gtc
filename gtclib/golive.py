@@ -467,10 +467,10 @@ def split_args(args):
     dbs=set(args)-cmds
     return list(cmds), list(dbs)
 def git_search():   
-    return search('deploy.repository.clone',[('repository_id.type','=','git')] )
+    return search('deploy.repository.clone',[('remote_id.type','=','git')] )
 
 def bzr_search():
-    return search('deploy.repository.clone',[('repository_id.type','=','bzr')] )
+    return search('deploy.repository.clone',[('remote_id.type','=','bzr')] )
 def deploy_search():
     return 
 
