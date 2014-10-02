@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import sys
 import os
 import optparse
@@ -496,7 +497,8 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     group.add_option("--api-url",
                      dest='apiurl',
                      help="Default: [%default]",
-                     default='http://golive-ontime.co.uk:8066/'
+                     #default='http://golive-ontime.co.uk:8066/'
+                     default='http://localhost:10069/'
                      )
     group.add_option("--login",
                      dest='login',
@@ -506,12 +508,12 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     group.add_option("--pass",
                      dest='passwd',
                      help="Default: [%default]",
-                     default='g77'
+                     default='admin'
                      )
     group.add_option("--dbname",
                      dest='dbname',
                      help="Default: [%default]",
-                     default='galtys_website'
+                     default='deploy'
                      )
     group.add_option("--subdir",
                      dest='subdir',
@@ -524,7 +526,7 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     global sock
     global opt
     opt, args = parser.parse_args(sys_args)
-    key=getpass.getpass()
+
     cmds, dbs = split_args(args)
     ROOT=os.path.join(ROOT, opt.subdir)
     if not os.path.isdir(ROOT):
@@ -550,6 +552,7 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             git_pull(git_ids)
             bzr_pull(git_ids)
     elif len(args) in [2,3]:
+        key=getpass.getpass()
         cmd,cmd2=args
         #import simplecrypt
         from simplecrypt import encrypt, decrypt

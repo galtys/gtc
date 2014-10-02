@@ -58,6 +58,7 @@ def generate_config(addons, fn='server7devel.conf', logfile=None, options=None):
         #c.set('options', 'db_host','127.0.0.1')
         for o,v in options:
             c.set('options', o,v)
+
     addons_path=[]
     for a in addons:
         if os.path.isdir(a):
