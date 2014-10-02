@@ -37,8 +37,10 @@ opt=None
 uid=None
 def read(model,ids,fnames):
 #    return sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['git_clone','mkdir'])
-    print opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames
-    return sock.execute(opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames)
+    #print opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames
+    ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames)
+    #print ret
+    return ret
 
 def search(model, domain):
     return sock.execute(opt.dbname, uid, opt.passwd, model, 'search', domain)
@@ -142,6 +144,7 @@ def bzr_pull(clone_ids):
         #print c['mkdir']
         local_dir=get_local_dir(c)                
         cwd=os.getcwd()
+        rb=c['url']
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
             print 44*'_', 'bzr pull', local_dir
@@ -208,13 +211,14 @@ def bzr_status(clone_ids):
             os.chdir(cwd)
 
 def git_push(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','branch'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)        
         #rb, branch,addon_subdir,is_module_path = xxx
         #local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
         cwd=os.getcwd()
+        branch=c['branch']
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
             print 44*'_', 'git push', local_dir
@@ -227,6 +231,7 @@ def bzr_push(clone_ids):
         #print c['mkdir']
         local_dir=get_local_dir(c)        
         cwd=os.getcwd()
+        rb=c['url']
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
             print 44*'_', 'bzr push', local_dir
@@ -235,7 +240,7 @@ def bzr_push(clone_ids):
             os.chdir(cwd)
 
 def git_pull(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','branch'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)        
@@ -243,6 +248,7 @@ def git_pull(clone_ids):
  #       rb, branch,addon_subdir,is_module_path = xxx
   #      local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
         cwd=os.getcwd()
+        branch=c['branch']
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
             print 44*'_', 'git pull', local_dir
@@ -550,7 +556,10 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             bzr_status(bzr_ids)
         elif cmd=='pull':
             git_pull(git_ids)
-            bzr_pull(git_ids)
+            bzr_pull(bzr_ids)
+        elif cmd=='push':
+            git_push(git_ids)
+            bzr_push(bzr_ids)
     elif len(args) in [2,3]:
         key=getpass.getpass()
         cmd,cmd2=args
@@ -564,15 +573,18 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             dps=read('deploy.deploy',deploy_ids,['site_name',
                                                  'options',
                                                  'db_password',
-                                                 'admin_password'])
+                                                 'admin_password',
+                                                 'clone_ids'])
             for d in dps:
                 name=d['site_name']
                 prod_config=os.path.join(ROOT, 'server7%s.conf'%name)
                 with open(prod_config, 'wb') as cf:
                     print 'writing config: ', prod_config
+                    clone_ids = d['clone_ids']
                     options=eval(d['options'])
                     db_pass=d['db_password']
                     admin_pass=d['admin_password']
+                    
                     db_pass=base64.decodestring(db_pass)
                     admin_pass=base64.decodestring(admin_pass)
                     options.append( ('db_password', decrypt(key,db_pass)) )
