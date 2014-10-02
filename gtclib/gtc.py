@@ -121,29 +121,33 @@ def git_branch2(ROOT, remote_branches, subdir='github', branch=False):
             if create_branch:
                 ret=subprocess.call(args)
     return out
+git_branch=git_branch2
 def git_clone(records):
     pass
-dbname='galtys_website'
-sock_common = xmlrpclib.ServerProxy ('http://golive-ontime.co.uk:8066/xmlrpc/common')
-uid = sock_common.login(dbname, 'admin','g77')
-#replace localhost with the address of the server
-sock = xmlrpclib.ServerProxy('http://golive-ontime.co.uk:8066/xmlrpc/object')
-
-#git
-clone_ids=sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'search', [('repository_id.type','=','git')])
-url = sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['git_clone','mkdir'])
-for c in url:
-    print c['mkdir']
-    print c['git_clone']
-
-#lp
-clone_ids=sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'search', [('repository_id.type','=','bzr')])
-url = sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['url','local_location_fnc'])
-for c in url:
-    print "#bzr url,local: %s,%s"%(c['url'], c['local_location_fnc'])
 
 
-sys.exit(0)
+if __name__=='__main__':
+    dbname='galtys_website'
+    sock_common = xmlrpclib.ServerProxy ('http://golive-ontime.co.uk:8066/xmlrpc/common')
+    uid = sock_common.login(dbname, 'admin','g77')
+    #replace localhost with the address of the server
+    sock = xmlrpclib.ServerProxy('http://golive-ontime.co.uk:8066/xmlrpc/object')
+
+    #git
+    clone_ids=sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'search', [('repository_id.type','=','git')])
+    url = sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['git_clone','mkdir'])
+    for c in url:
+        print c['mkdir']
+        print c['git_clone']
+
+    #lp
+    clone_ids=sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'search', [('repository_id.type','=','bzr')])
+    url = sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['url','local_location_fnc'])
+    for c in url:
+        print "#bzr url,local: %s,%s"%(c['url'], c['local_location_fnc'])
+
+
+    sys.exit(0)
 
 
 def git_status(ROOT, remote_branches,subdir='github'):
