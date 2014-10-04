@@ -39,6 +39,8 @@ DEBUG=True
 import getpass
 import grp,pwd
 import subprocess
+from simplecrypt import encrypt, decrypt
+import base64
 
 def chown(fn,user,group,options=''): #-R
 
@@ -52,7 +54,6 @@ def chown(fn,user,group,options=''): #-R
     return ret
 
 def write_file(fn,c,user,group):
-
     current_login=getpass.getuser()
     USER=current_login
     GROUP=pwd.getpwnam(current_login).pw_name
@@ -95,25 +96,40 @@ import os
 def update_shmem(mem_total):
     pass
 
-def run_bash(t_id,r_id,content,subprocess_arg):
+def run_bash(t_id,r_id,name,content,subprocess_arg):
     script=os.path.join(os.getcwd(), "script_%d_%d.sh"%(t_id,r_id) )
     file(script,'wb').write(content)
     subprocess.call(["chmod","+x",script])
 #print install_script
-    print '   executing bash script', script
     arg=eval(subprocess_arg)
+    print '   executing bash script', name,script,arg
+
     subprocess.call(arg )
     print '   deleting bash script', script
     subprocess.call(["rm",script])
 
-def render():
+
+def render_pass(content, pass_map,key):        
+    for r in pass_map:
+        tag=r['pass_tag']
+        if tag in content:
+            print r
+            p64=base64.decodestring( r['password'] )
+            p=decrypt(key,p64)
+            content=content.replace(tag,p)
+    return content
+
+def render(key):
     hostname=socket.gethostname()
 
     host_ids=search('deploy.host',[('name','=',hostname)])
     #host_explore(host_ids)
 
     ret=sock.execute(opt.dbname, uid, opt.passwd, 'deploy.host','render',host_ids)
+    pass_ids=search('deploy.password',[] )
+    pass_map=read('deploy.password', pass_ids,['pass_tag','password'] )
     for h,model,t_id,r_id,out_file,content,user,group,_type,name,python_function,subprocess_arg,sequence in ret:
+        content=render_pass(content, pass_map,key)
         if _type=='template':
             write_file(out_file,content,user,group)
         elif _type=='python' and model=='deploy.host':
@@ -122,7 +138,7 @@ def render():
             exec my_code
             ret=eval(python_function)
         elif _type=='bash' and model=='deploy.host':            
-            run_bash(t_id,r_id,content,subprocess_arg)
+            run_bash(t_id,r_id,name,content,subprocess_arg)
 
 def is_module(p):
     ret=False
@@ -640,16 +656,22 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             git_push(git_ids)
             bzr_push(bzr_ids)
         elif cmd=='render':
-            render()
+            key=getpass.getpass()
+            render(key)
+
     elif len(args) in [2,3]:
         key=getpass.getpass()
         cmd,cmd2=args
         #import simplecrypt
-        from simplecrypt import encrypt, decrypt
-        import base64
         #ciphertext = encrypt('password', plaintext)
         #plaintext = decrypt('password', ciphertext)
-        if cmd=='config':
+        if cmd=='encrypt':
+            x=encrypt(key,cmd2)
+            t=base64.b64encode(x)
+            print [t]
+            d = base64.decodestring( t )
+            print [decrypt(key,d)]
+        elif cmd=='config':
             deploy_ids=search('deploy.deploy',[] )
             dps=read('deploy.deploy',deploy_ids,['site_name',
                                                  'options',
