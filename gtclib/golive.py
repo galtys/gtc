@@ -90,10 +90,21 @@ def search(model, domain):
 import socket
 import pprint
 import resource
-
+import os
 
 def update_shmem(mem_total):
     pass
+
+def run_bash(t_id,r_id,content,subprocess_arg):
+    script=os.path.join(os.getcwd(), "script_%d_%d.sh"%(t_id,r_id) )
+    file(script,'wb').write(content)
+    subprocess.call(["chmod","+x",script])
+#print install_script
+    print '   executing bash script', script
+    arg=eval(subprocess_arg)
+    subprocess.call(arg )
+    print '   deleting bash script', script
+    subprocess.call(["rm",script])
 
 def render():
     hostname=socket.gethostname()
@@ -102,20 +113,16 @@ def render():
     #host_explore(host_ids)
 
     ret=sock.execute(opt.dbname, uid, opt.passwd, 'deploy.host','render',host_ids)
-    for h,model,t_id,r_id,out_file,content,user,group,_type,python_function,sequence in ret:
+    for h,model,t_id,r_id,out_file,content,user,group,_type,name,python_function,subprocess_arg,sequence in ret:
         if _type=='template':
             write_file(out_file,content,user,group)
         elif _type=='python' and model=='deploy.host':
             my_code=compile(content, 'mypy', "exec")
             print 'executing python code', [t_id,r_id,python_function]            
-            #global_env=globals()
-            #local_env=locals()
-            #print content
             exec my_code
             ret=eval(python_function)
-            
-        #print h,model,t_id,r_id,out_file, user,group
-        #print content
+        elif _type=='bash' and model=='deploy.host':            
+            run_bash(t_id,r_id,content,subprocess_arg)
 
 def is_module(p):
     ret=False
