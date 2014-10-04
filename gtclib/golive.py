@@ -35,16 +35,88 @@ def render_mako(template, context, fn=None):
 sock=None
 opt=None
 uid=None
+DEBUG=True
+import getpass
+import grp,pwd
+import subprocess
+
+def chown(fn,user,group,options=''): #-R
+
+    if options:
+        o=options.split()
+    else:
+        o=[]
+    
+    ret=subprocess.call(["chown","%s:%s"%(user,group),fn]+o )
+    #print [ret]
+    return ret
+
+def write_file(fn,c,user,group):
+
+    current_login=getpass.getuser()
+    USER=current_login
+    GROUP=pwd.getpwnam(current_login).pw_name
+    
+    if DEBUG:
+        print "Writing to: ", fn
+    try:
+        fp=open(fn,'wb')
+        fp.write(c)
+        fp.close()
+    except IOError:
+        if DEBUG:
+            print "   Can not create/write to: ", fn
+    if (user!=USER) or (group!=GROUP):
+        if DEBUG:
+            print "   Current user: %s"%USER
+            print "   Current group: %s"%GROUP
+            print "   Chmod to: %s:%s"%(user,group)
+        chown(fn,user,group)
+
+
 def read(model,ids,fnames):
 #    return sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['git_clone','mkdir'])
     #print opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames
     ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames)
     #print ret
     return ret
+def write(model,ids,value):
+    ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'write',  ids,value)
+    return ret
 
 def search(model, domain):
     return sock.execute(opt.dbname, uid, opt.passwd, model, 'search', domain)
-    
+
+import socket
+import pprint
+import resource
+
+
+def update_shmem(mem_total):
+    pass
+
+def render():
+    hostname=socket.gethostname()
+
+    host_ids=search('deploy.host',[('name','=',hostname)])
+    #host_explore(host_ids)
+
+    ret=sock.execute(opt.dbname, uid, opt.passwd, 'deploy.host','render',host_ids)
+    for h,model,t_id,r_id,out_file,content,user,group,_type,python_function,sequence in ret:
+        if _type=='template':
+            write_file(out_file,content,user,group)
+        elif _type=='python' and model=='deploy.host':
+            my_code=compile(content, 'mypy', "exec")
+            print 'executing python code', [t_id,r_id,python_function]            
+            #global_env=globals()
+            #local_env=locals()
+            #print content
+            exec my_code
+            ret=eval(python_function)
+            
+        #print h,model,t_id,r_id,out_file, user,group
+        #print content
+
 def is_module(p):
     ret=False
     if os.path.isdir(p):
@@ -560,6 +632,8 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
         elif cmd=='push':
             git_push(git_ids)
             bzr_push(bzr_ids)
+        elif cmd=='render':
+            render()
     elif len(args) in [2,3]:
         key=getpass.getpass()
         cmd,cmd2=args
