@@ -18,8 +18,8 @@ import json
 import requests
 import getpass
 import xmlrpclib
-
-
+hostname=socket.gethostname()
+DOMAIN=[('name','ilike',"%s%%"%hostname)]
 def render_mako(template, context, fn=None):
     t=Template(template)
     if fn:
@@ -122,7 +122,7 @@ def render_pass(content, pass_map,key):
 def render(key):
     hostname=socket.gethostname()
 
-    host_ids=search('deploy.host',[('name','=',hostname)])
+    host_ids=search('deploy.host',DOMAIN)
     #host_explore(host_ids)
 
     ret=sock.execute(opt.dbname, uid, opt.passwd, 'deploy.host','render',host_ids)
@@ -176,7 +176,7 @@ def get_addons(clone_ids):
     addons_path=[]
     for c in items:
         a=get_local_dir(c) 
-        print 'LOCAL DIR', a
+        #print 'LOCAL DIR', a
         if os.path.isdir(a):
             web=os.path.join(a, 'addons/web')
             add=os.path.join(a, 'addons')
@@ -205,7 +205,7 @@ def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
     return c
 def generate_config(clone_ids,options, fn=None, logfile=None):
     addons=get_addons(clone_ids)
-    print addons
+    #print addons
     c=create_odoo_config(options,addons,fn=fn,logfile=logfile)
     return c
 def get_local_dir(item):
@@ -568,16 +568,25 @@ def split_args(args):
     cmds=set(args).intersection(set(exit_commands))
     dbs=set(args)-cmds
     return list(cmds), list(dbs)
+def host_filter(ids, model='deploy.repository.clone',field='local_host_id'):
+    out=[]
+    for h in read(model,ids,[field]):
+        h_id,h_name=h[field]
+        if hostname.startswith(h_name):
+            out.append(h['id'])
+    return out
 def git_search():   
-    return search('deploy.repository.clone',[('remote_id.type','=','git')] )
-
+    ret = search('deploy.repository.clone',[('remote_id.type','=','git')] )
+    return host_filter(ret)
+ 
 def bzr_search():
-    return search('deploy.repository.clone',[('remote_id.type','=','bzr')] )
+    ret = search('deploy.repository.clone',[('remote_id.type','=','bzr')] )
+    return host_filter(ret)
 def deploy_search():
     return 
 
 def parse(sys_args,USER=None, GROUP=None, ROOT=None):
-    hostname=socket.gethostname()
+    
     import getpass
     current_login=getpass.getuser()
     if ROOT is None:
@@ -672,7 +681,8 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             d = base64.decodestring( t )
             print [decrypt(key,d)]
         elif cmd=='config':
-            deploy_ids=search('deploy.deploy',[] )
+            deploy_ids=search('deploy.deploy',[])
+            deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
             dps=read('deploy.deploy',deploy_ids,['site_name',
                                                  'options',
                                                  'db_password',
@@ -686,8 +696,7 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                     clone_ids = d['clone_ids']
                     options=eval(d['options'])
                     db_pass=d['db_password']
-                    admin_pass=d['admin_password']
-                    
+                    admin_pass=d['admin_password']                    
                     db_pass=base64.decodestring(db_pass)
                     admin_pass=base64.decodestring(admin_pass)
                     options.append( ('db_password', decrypt(key,db_pass)) )
