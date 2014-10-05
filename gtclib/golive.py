@@ -52,8 +52,13 @@ def chown(fn,user,group,options=''): #-R
     ret=subprocess.call(["chown","%s:%s"%(user,group),fn]+o )
     #print [ret]
     return ret
+def run_chmod(fn, chmod):
+    arg=["chmod",chmod,fn]
+    if DEBUG:
+        print arg
+    subprocess.call(arg)
 
-def write_file(fn,c,user,group):
+def write_file(fn,c,user,group,chmod):
     current_login=getpass.getuser()
     USER=current_login
     GROUP=pwd.getpwnam(current_login).pw_name
@@ -73,6 +78,8 @@ def write_file(fn,c,user,group):
             print "   Current group: %s"%GROUP
             print "   Chmod to: %s:%s"%(user,group)
         chown(fn,user,group)
+    if chmod:
+        run_chmod(fn,chmod)
 
 
 def read(model,ids,fnames):
@@ -100,12 +107,12 @@ def run_bash(t_id,r_id,name,content,subprocess_arg):
     script=os.path.join(os.getcwd(), "script_%d_%d.sh"%(t_id,r_id) )
     file(script,'wb').write(content)
     subprocess.call(["chmod","+x",script])
-#print install_script
+    #print [name, subprocess_arg]
     arg=eval(subprocess_arg)
     print '   executing bash script', name,script,arg
 
     subprocess.call(arg )
-    print '   deleting bash script', script
+    #print '   deleting bash script', script
     subprocess.call(["rm",script])
 
 
@@ -113,7 +120,7 @@ def render_pass(content, pass_map,key):
     for r in pass_map:
         tag=r['pass_tag']
         if tag in content:
-            print r
+            #print r
             p64=base64.decodestring( r['password'] )
             p=decrypt(key,p64)
             content=content.replace(tag,p)
@@ -121,20 +128,21 @@ def render_pass(content, pass_map,key):
 
 def render(key):
     hostname=socket.gethostname()
-
     host_ids=search('deploy.host',DOMAIN)
     #host_explore(host_ids)
 
     ret=sock.execute(opt.dbname, uid, opt.passwd, 'deploy.host','render',host_ids)
     pass_ids=search('deploy.password',[] )
     pass_map=read('deploy.password', pass_ids,['pass_tag','password'] )
-    for h,model,t_id,r_id,out_file,content,user,group,_type,name,python_function,subprocess_arg,sequence in ret:
+    #print len(ret[0])
+    #h,model,t_id,r_id,out_file,content,user,group,_type,name,python_function,subprocess_arg,chmod,sequence
+    for h,model,t_id,r_id,out_file,content,user,group,_type,name,python_function,subprocess_arg,chmod,sequence in ret:
         content=render_pass(content, pass_map,key)
         if _type=='template':
-            write_file(out_file,content,user,group)
+            write_file(out_file,content,user,group,chmod)
         elif _type=='python' and model=='deploy.host':
             my_code=compile(content, 'mypy', "exec")
-            print 'executing python code', [t_id,r_id,python_function]            
+            #print 'executing python code', [t_id,r_id,python_function]            
             exec my_code
             ret=eval(python_function)
         elif _type=='bash' and model=='deploy.host':            
@@ -171,14 +179,23 @@ def get_server(clone_ids):
                 if spcnt>1:
                     raise ValueError("only one server path allowed")
     return c_id,server_path
+
+def get_parent_dir(path):
+    arg=path.split('/')[-2:-1]
+    arg=['/']+path.split('/')[:-1]
+    p=os.path.join(*arg )
+    #print 'Parent Dir for ', path, arg,p
+    return p
     
 def get_addons(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','addon_subdir'] )
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','addon_subdir','is_module_path'] )
     addons_path=[]
     for c in items:
         a=get_local_dir(c) 
         to_append=False
-        if os.path.isdir(a):
+        if c['is_module_path']:
+            to_append=get_parent_dir(a)
+        elif os.path.isdir(a):
             web=os.path.join(a, 'addons/web')
             add=os.path.join(a, 'addons')
             if c['addon_subdir']:
@@ -188,13 +205,13 @@ def get_addons(clone_ids):
                 
             if os.path.isdir(web) or os.path.isdir(add):
                 to_append=os.path.join(a,'addons')
-                addons_path.append()
+
             elif os.path.isdir(add2):
                 to_append=add2
-                addons_path.append()
+
             else:
                 to_append=a
-        addons_path.append(c['id'],to_append)
+        addons_path.append( (c['id'],to_append) )
     return addons_path
 def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
     c=ConfigParser.RawConfigParser()
@@ -203,14 +220,15 @@ def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
         c.add_section('options')
         for o,v in options:
             c.set('options', o,v)
-    c.set('options', 'addons_path', ','.join(addons) )
+    c.set('options', 'addons_path', ','.join(list(set(addons))) )
     if logfile is not None:
         c.set('options', 'logfile', logfile)
     return c
 def generate_config(clone_ids,options, fn=None, logfile=None):
-    addons=[x[1] for x in get_addons(clone_ids) if x[1]]
+    ret=get_addons(clone_ids)
+    addons=[x[1] for x in ret if x[1]]
     c=create_odoo_config(options,addons,fn=fn,logfile=logfile)
-    return c
+    return c,ret
 def get_local_dir(item):
     #current_login=getpass.getuser()
     HOME=os.environ['HOME']
@@ -220,22 +238,6 @@ def get_local_dir(item):
     else:
         return os.path.join(HOME,l)
 
-def git_clone(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','branch'] )
-    for c in items:
-        #print c['mkdir']
-        local_dir=get_local_dir(c)      
-        url=c['url']
-        branch=c['branch']
-        if os.path.isdir(local_dir):
-            pass       
-        else:
-            if not os.path.isdir(local_dir):
-                #if create_branch:
-                os.makedirs(local_dir) #create if it does not exist
-            args = ["git","clone","--branch",branch, url,local_dir]
-            ret=subprocess.call(args)
-                #return out
 def bzr_pull(clone_ids):
     items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
     for c in items:
@@ -250,15 +252,27 @@ def bzr_pull(clone_ids):
             subprocess.call(args)
             os.chdir(cwd)
 
-def get_parent_dir(path):
-    arg=path.split('/')[-2:-1]
-    arg=['/']+path.split('/')[:-1]
-    p=os.path.join(*arg )
-    #print 'Parent Dir for ', path, arg,p
-    return p
+def git_clone(clone_ids):
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','branch','validated_addon_path'] )
+    for c in items:
+        #print c['mkdir']
+        local_dir=get_local_dir(c)      
+        url=c['url']
+        branch=c['branch']
+        p=get_parent_dir(local_dir)
+        if os.path.isdir(local_dir):
+            pass       
+        else:
+            if not os.path.isdir(p):
+                #if create_branch:
+                os.makedirs(p) #create if it does not exist
+            args = ["git","clone","--branch",branch, url,local_dir]
+            print args
+            ret=subprocess.call(args)
+                #return out
 
 def bzr_branch(clone_ids): #for existing branches, cmd can be push or pull
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','validated_addon_path'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)                
@@ -267,6 +281,7 @@ def bzr_branch(clone_ids): #for existing branches, cmd can be push or pull
         if not os.path.isdir(p):
             os.makedirs(p) #create if it does not exist
             #    #print 'does not exist',  [rb, p, l]
+        if not os.path.isdir(local_dir):
             r=Branch.open(url) #remote branch            
             new=r.bzrdir.sprout(local_dir) #new loca branch
 #    return out
@@ -353,86 +368,6 @@ def git_pull(clone_ids):
             args = ["git","pull","origin", branch]
             subprocess.call(args)
             os.chdir(cwd)
-
-DAEMON="""#!/bin/bash
-
-### BEGIN INIT INFO
-# Provides:		openerp-server
-# Required-Start:	$remote_fs $syslog
-# Required-Stop:	$remote_fs $syslog
-# Should-Start:		$network
-# Should-Stop:		$network
-# Default-Start:	2 3 4 5
-# Default-Stop:		0 1 6
-# Short-Description:	Enterprise Resource Management software
-# Description:		Open ERP is a complete ERP and CRM software.
-### END INIT INFO
-
-<%
-  import os
-  PATH="/sbin:/bin:/usr/sbin:/usr/bin"
-  DAEMON=os.path.join(server_path, 'openerp-server')
-  NAME="openerp-server"
-  DESC="openerp-server"
-  #CONFIG=${CONFIG}
-  USER=user
-  GROUP=group
-  OPENERP_LOG=os.path.join(ROOT,'server7daemon.log')
-%>
-
-test -x ${DAEMON} || exit 0
-
-set -e
-
-case "$${1}" in
-	start)
-		echo -n "Starting ${DESC}: "
-
-		start-stop-daemon --start --quiet --pidfile /var/run/${NAME}.pid \
-			--chuid ${USER} --group ${GROUP} --background --make-pidfile \
-			--exec ${DAEMON} -- --config=${CONFIG} --logfile=${OPENERP_LOG}
-		echo "${NAME}."
-		;;
-
-	stop)
-		echo -n "Stopping ${DESC}: "
-
-		start-stop-daemon --stop --quiet --pidfile /var/run/${NAME}.pid \
-			--oknodo
-
-		echo "${NAME}."
-		;;
-
-	restart|force-reload)
-		echo -n "Restarting ${DESC}: "
-
-		start-stop-daemon --stop --quiet --pidfile /var/run/${NAME}.pid \
-			--oknodo
-
-		sleep 1
-
-		start-stop-daemon --start --quiet --pidfile /var/run/${NAME}.pid \
-			--chuid ${USER} --group ${GROUP} --background --make-pidfile \
-			--exec ${DAEMON} -- --config=${CONFIG} --logfile=${OPENERP_LOG}
-		echo "${NAME}."
-		;;
-
-	*)
-		N=/etc/init.d/${NAME}
-		echo "Usage: ${NAME} {start|stop|restart|force-reload}" >&2
-		exit 1
-		;;
-esac
-exit 0
-"""
-
-def get_daemon(server_path, prod_config, USER=None, GROUP=None, ROOT=None):
-    arg = dict(server_path=server_path,
-               CONFIG=prod_config,
-               user=USER,
-               group=GROUP,
-               ROOT=ROOT)
-    return render_mako(DAEMON, arg)
 
 WSGI_SCRIPT="""import sys
 import openerp
@@ -594,6 +529,10 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     current_login=getpass.getuser()
     if ROOT is None:
         ROOT=os.environ['HOME']
+    if 'PASS' in os.environ:
+        PASS=os.environ['PASS']
+    else:
+        PASS=None
     if USER is None:
         USER=current_login
     if GROUP is None:
@@ -668,11 +607,13 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             git_push(git_ids)
             bzr_push(bzr_ids)
         elif cmd=='render':
-            key=getpass.getpass()
+            if PASS:
+                key=PASS
+            else:
+                key=getpass.getpass()
             render(key)
 
     elif len(args) in [2,3]:
-        key=getpass.getpass()
         cmd,cmd2=args
         #import simplecrypt
         #ciphertext = encrypt('password', plaintext)
@@ -683,7 +624,11 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             print [t]
             d = base64.decodestring( t )
             print [decrypt(key,d)]
-        elif cmd=='config':
+        elif cmd=='config' and cmd2=='write':
+            if PASS:
+                key=PASS
+            else:
+                key=getpass.getpass()
             deploy_ids=search('deploy.deploy',[])
             deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
             dps=read('deploy.deploy',deploy_ids,['site_name',
@@ -704,8 +649,34 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                     admin_pass=base64.decodestring(admin_pass)
                     options.append( ('db_password', decrypt(key,db_pass)) )
                     options.append( ('admin_password', decrypt(key,admin_pass)) )
-                    conf=generate_config(clone_ids,options)
+                    conf,ret=generate_config(clone_ids,options)
                     conf.write(cf)
+                    for c_id,addon_path in ret:                        
+                        write('deploy.repository.clone',[c_id],{'validated_addon_path':addon_path})
+                    c_id,server_path=get_server(clone_ids)
+                    write('deploy.deploy',[ d['id'] ], {'validated_config_file':prod_config,
+                                                        'validated_server_path':server_path,
+                                                        'validated_root':ROOT})
+        elif cmd=='config' and cmd2=='show':
+            deploy_ids=search('deploy.deploy',[])
+            deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
+            dps=read('deploy.deploy',deploy_ids,['site_name',
+                                                 'options',
+                                                 'db_password',
+                                                 'admin_password',
+                                                 'clone_ids',
+                                                 'validated_config_file',
+                                                 'validated_server_path',
+                                                 ])
+            for d in dps:
+                print 44*'__'
+                print "%s/openerp-server -c %s"%( d['validated_server_path'],d['validated_config_file'] )
+                print 'Addon paths:'
+                clone_ids = d['clone_ids']
+                clones=read('deploy.repository.clone',clone_ids,['validated_addon_path','name',
+                                                                 'local_location_fnc'])
+                for c in clones:
+                    print c['name'], c['validated_addon_path']
 
     return
     for site in sites:
