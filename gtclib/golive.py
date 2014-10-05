@@ -147,7 +147,12 @@ def render(key):
             ret=eval(python_function)
         elif _type=='bash' and model=='deploy.host':            
             run_bash(t_id,r_id,name,content,subprocess_arg)
-
+def data_export(master_data_module):
+    m_id=search('ir.module.module', [('name','=',master_data_module)] )
+    #print m_id,master_data_module
+    if m_id:
+        ret=sock.execute(opt.dbname,uid,opt.passwd, 'ir.module.module','master_data_export',m_id)
+        print ret
 def is_module(p):
     ret=False
     if os.path.isdir(p):
@@ -366,6 +371,7 @@ def git_pull(clone_ids):
             os.chdir(local_dir)
             print 44*'_', 'git pull', local_dir
             args = ["git","pull","origin", branch]
+            print args
             subprocess.call(args)
             os.chdir(cwd)
 
@@ -624,6 +630,8 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             print [t]
             d = base64.decodestring( t )
             print [decrypt(key,d)]
+        elif cmd=='export':
+            data_export(cmd2)
         elif cmd=='config' and cmd2=='write':
             if PASS:
                 key=PASS
