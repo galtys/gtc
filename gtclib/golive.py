@@ -157,6 +157,7 @@ def get_server(clone_ids):
     items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
     server_path=None
     spcnt=0 #allow only one server path
+    c_id=False
     for c in items:
         a=get_local_dir(c) 
         if os.path.isdir(a):
@@ -165,17 +166,18 @@ def get_server(clone_ids):
             #add=os.path.join(a, 'addons')
             if os.path.isdir(server):
                 server_path=a
+                c_id=c['id']
                 spcnt+=1
                 if spcnt>1:
                     raise ValueError("only one server path allowed")
-
-    return server_path
+    return c_id,server_path
     
 def get_addons(clone_ids):
     items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','addon_subdir'] )
     addons_path=[]
     for c in items:
         a=get_local_dir(c) 
+        to_append=False
         print 'LOCAL DIR', a
         if os.path.isdir(a):
             web=os.path.join(a, 'addons/web')
@@ -184,13 +186,16 @@ def get_addons(clone_ids):
                 add2=os.path.join(a, c['addon_subdir'] )
             else:
                 add2=''
-
+                
             if os.path.isdir(web) or os.path.isdir(add):
-                addons_path.append(os.path.join(a,'addons'))
+                to_append=os.path.join(a,'addons')
+                addons_path.append()
             elif os.path.isdir(add2):
-                addons_path.append(add2)
+                to_append=add2
+                addons_path.append()
             else:
-                addons_path.append(a)
+                to_append=a
+        addons_path.append(c['id'],to_append)
     return addons_path
 def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
     c=ConfigParser.RawConfigParser()
@@ -204,7 +209,7 @@ def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
         c.set('options', 'logfile', logfile)
     return c
 def generate_config(clone_ids,options, fn=None, logfile=None):
-    addons=get_addons(clone_ids)
+    addons=[x[1] for x in get_addons(clone_ids) if x[1]]
     print addons
     c=create_odoo_config(options,addons,fn=fn,logfile=logfile)
     return c
