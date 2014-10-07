@@ -483,6 +483,8 @@ def parse(sys_args, sites, USER=None, GROUP=None, ROOT=None):
     if GROUP is None:
         import grp,pwd
         GROUP=pwd.getpwnam(current_login).pw_name
+    if socket.gethostname()=='asus':
+        ROOT='/home/jan/openerp'
 
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
     usage += "  Commands: %s \n" % (','.join(exit_commands) )
