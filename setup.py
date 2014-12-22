@@ -9,10 +9,11 @@ setup(
     url='git@codebasehq.com:galtys/galtys/gtc.git',
     packages=['gtclib'],
     install_requires=[
-        #'requests>=2.0.1',
+        'requests>=2.0.1',
+        'simple-crypt>=3.0.2',
     ],
     license='MIT',
     scripts=[
-        'bin/gtc'
+        'bin/golive'
     ],
 )

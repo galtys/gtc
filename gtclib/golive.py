@@ -127,11 +127,11 @@ def render_pass(content, pass_map,key):
     return content
 
 def render(key):
-    hostname=socket.gethostname()
     host_ids=search('deploy.host',DOMAIN)
+    #print 'host ids', host_ids
     #host_explore(host_ids)
 
-    ret=sock.execute(opt.dbname, uid, opt.passwd, 'deploy.host','render',host_ids)
+    ret=sock.execute(opt.dbname, uid, opt.passwd, 'deploy.host','render',host_ids, {'hostname':hostname})
     pass_ids=search('deploy.password',[] )
     pass_map=read('deploy.password', pass_ids,['pass_tag','password'] )
     #print len(ret[0])
