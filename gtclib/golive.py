@@ -83,7 +83,7 @@ def write_file(fn,c,user,group,chmod):
 
 
 def read(model,ids,fnames):
-#    return sock.execute(dbname, uid, 'g77', 'deploy.repository.clone', 'read',  clone_ids,['git_clone','mkdir'])
+#    return sock.execute(dbname, uid, 'g77', 'deploy.repository', 'read',  clone_ids,['git_clone','mkdir'])
     #print opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames
     ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames)
     #print ret
@@ -91,9 +91,24 @@ def read(model,ids,fnames):
 def write(model,ids,value):
     ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'write',  ids,value)
     return ret
+def create(model,value):
+    ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'create',  value)
+    return ret
 
 def search(model, domain):
     return sock.execute(opt.dbname, uid, opt.passwd, model, 'search', domain)
+
+def update_one(model, arg, value):
+    #print [model, arg, value]
+    ret_ids = search(model, arg)
+    if len(ret_ids)==1:
+        ret = write(model, ret_ids, value)
+        return ret_ids[0]
+    elif len(ret_ids)==0:
+        ret= create(model, value)
+        return ret
+    else:
+        raise ValueError
 
 import socket
 import pprint
@@ -167,12 +182,14 @@ def is_module(p):
     return ret
 
 def get_server(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     server_path=None
     spcnt=0 #allow only one server path
     c_id=False
+    #print 'GET SERVER'
     for c in items:
         a=get_local_dir(c) 
+        #print c,a
         if os.path.isdir(a):
             server=os.path.join(a,'openerp/addons/base')
             #web=os.path.join(a, 'addons/web')
@@ -193,7 +210,7 @@ def get_parent_dir(path):
     return p
     
 def get_addons(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','addon_subdir','is_module_path'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc','addon_subdir','is_module_path'] )
     addons_path=[]
     for c in items:
         a=get_local_dir(c) 
@@ -244,7 +261,7 @@ def get_local_dir(item):
         return os.path.join(HOME,l)
 
 def bzr_pull(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)                
@@ -258,7 +275,7 @@ def bzr_pull(clone_ids):
             os.chdir(cwd)
 
 def git_clone(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','branch','validated_addon_path'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc','branch'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)      
@@ -277,7 +294,7 @@ def git_clone(clone_ids):
                 #return out
 
 def bzr_branch(clone_ids): #for existing branches, cmd can be push or pull
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','validated_addon_path'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)                
@@ -292,13 +309,13 @@ def bzr_branch(clone_ids): #for existing branches, cmd can be push or pull
 #    return out
 
 #def bzr_branch():
-#    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+#    items = read('deploy.repositorye',clone_ids,['url','local_location_fnc'] )
 #    for c in items:
 #        print "#bzr url,local: %s,%s"%(c['url'], c['local_location_fnc'])
 #        local=get_local_dir(c)       
 
 def git_status(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['local_location_fnc'] )
+    items = read('deploy.repository',clone_ids,['local_location_fnc'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)      
@@ -312,7 +329,7 @@ def git_status(clone_ids):
             subprocess.call(args)
             os.chdir(cwd)
 def bzr_status(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)        
@@ -329,7 +346,7 @@ def bzr_status(clone_ids):
             os.chdir(cwd)
 
 def git_push(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','branch'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc','branch'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)        
@@ -344,7 +361,7 @@ def git_push(clone_ids):
             subprocess.call(args)
             os.chdir(cwd)
 def bzr_push(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)        
@@ -358,10 +375,10 @@ def bzr_push(clone_ids):
             os.chdir(cwd)
 
 def git_pull(clone_ids):
-    items = read('deploy.repository.clone',clone_ids,['url','local_location_fnc','branch'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc','branch'] )
     for c in items:
         #print c['mkdir']
-        local_dir=get_local_dir(c)        
+        local_dir=get_local_dir(c)
 #    for xxx in remote_branches:
  #       rb, branch,addon_subdir,is_module_path = xxx
   #      local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
@@ -506,13 +523,35 @@ def create_or_update_db_user(options):
         cr.execute("create user %s with password '%s'"  %( o['db_user'], o['db_password'] ) )
     cr.close()
     conn.commit()
+def run_sql(cs, sql):
+    conn = psycopg2.connect(cs)
+    cr = conn.cursor()
+    ret=cr.execute(sql)
+    d=cr.fetchall()
+    #print "user can connect", cr, ret
+    cr.close()
+    conn.commit()
+    return d
 
+def sql_as_superuser(sql,port='5432'):
+    conn_string1 = "host='%s' dbname='postgres' user='%s' port='%s'" % ('127.0.0.1', 'postgres',port)
+    ret=run_sql(conn_string1, sql)
+    if ret is None:        
+        passwd=os.environ.get('PG_PASSWD')
+        if passwd is None:
+            passwd = getpass.getpass()
+        conn_string = "host='%s' dbname='postgres' user='%s' port='%s' password='%s'" % ('127.0.0.1', 'postgres',passwd)
+        ret=run_sql(conn_string, sql)
+    return ret
+    
 exit_commands=['db','branch','write','status','unlink','push','pull', 'show']
 def split_args(args):
     cmds=set(args).intersection(set(exit_commands))
     dbs=set(args)-cmds
     return list(cmds), list(dbs)
-def host_filter(ids, model='deploy.repository.clone',field='local_host_id'):
+
+#def host_filter(ids, model='deploy.repository.clone',field='local_host_id'):
+def host_filter(ids, model=None,field=None):
     out=[]
     for h in read(model,ids,[field]):
         h_id,h_name=h[field]
@@ -520,14 +559,69 @@ def host_filter(ids, model='deploy.repository.clone',field='local_host_id'):
             out.append(h['id'])
     return out
 def git_search():   
-    ret = search('deploy.repository.clone',[('remote_id.type','=','git')] )
-    return host_filter(ret)
+    ret = search('deploy.repository',[('type','=','git')] )
+    return ret #host_filter(ret)
  
 def bzr_search():
-    ret = search('deploy.repository.clone',[('remote_id.type','=','bzr')] )
-    return host_filter(ret)
+    ret = search('deploy.repository',[('type','=','bzr')] )
+    return ret #host_filter(ret)
 def deploy_search():
     return 
+def get_user_id(user, hostname):
+    host_id=update_one('deploy.host', [('name','=',hostname)], {'name':hostname} )
+    user_id=update_one('deploy.host.user', [('login','=',user),('host_id.name','=',hostname)],
+                       {'name':user,
+                        'host_id':host_id,
+                        'login':user,} )
+    return user_id,host_id            
+
+def generate_password():
+    import string
+    from random import sample, choice
+    chars = string.letters + string.digits
+    length = 8
+    ret=''.join(choice(chars) for _ in range(length))
+    return ret
+def update_pg_user_passwd(user,passwd,port='5432'):
+    sql="alter user %s with password '%s'"%(user,passwd)
+    return sql_as_superuser(sql, port=port)
+
+def update_clusters(host_id,key):
+    #subprocess.call(["chmod","+x",script])
+    s=subprocess.Popen(["pg_lsclusters","-h"], stdout=subprocess.PIPE)
+    stdoutdata, stderrdata=s.communicate()
+    #['9.3', 'main', '5432', 'online', 'postgres', '/var/lib/postgresql/9.3/main', '/var/log/postgresql/postgresql-9.3-main.log']
+    #host_id=search('deploy.host'
+    for c in stdoutdata.split('\n'):
+        if c:
+            print 'UPDATING', c
+            version,name,port,status,user,data,log= c.split()
+            arg=[('host_id','=',host_id),('version','=',version),
+                 ('name','=',name),
+             ]
+            val=dict( [(x[0],x[2]) for x in arg] )
+            val['port'] = int(port)
+            pg_id=update_one('deploy.pg.cluster',arg,val)
+            for pgu in sql_as_superuser(user_list_sql,port=port):
+                print pgu
+                name,pguid,perm=pgu
+                #superuser=su=='superuser'
+                arg=[('login','=',name),
+                     ('cluster_id','=',pg_id) ]
+                val=dict( [(x[0],x[2]) for x in arg] )
+                val['superuser']=True#superuser                
+                pg_user_id=update_one('deploy.pg.user',arg,val)
+            pg_user_ids = search('deploy.pg.user',[('cluster_id','=',pg_id)])
+            pg_users = read('deploy.pg.user',pg_user_ids,['login','password_id'])
+            for pg in pg_users:
+                if not pg['password_id']:
+                    passwd=generate_password()
+                    x=encrypt(key,passwd)
+                    passwd2=base64.b64encode(x)
+                    pass_id=create('deploy.password',{'name':passwd,
+                                                      'password':passwd2})
+                    update_one('deploy.pg.user',[('id','=',pg['id'])],{'password_id':pass_id})
+                    update_pg_user_passwd(pg['login'],passwd,port=port)
 
 def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     
@@ -552,6 +646,12 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     group = optparse.OptionGroup(parser, "Login")
     #site[site_name]={}
     #site[site_name]['server_dest']="server_%s"%site_name
+    group.add_option("--account",
+                     dest='account',
+                     help="Default: [%default]",
+                     #default='http://golive-ontime.co.uk:8066/'
+                     default='jan'
+                     )
     group.add_option("--api-url",
                      dest='apiurl',
                      help="Default: [%default]",
@@ -594,10 +694,18 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
 
     uid = sock_common.login(opt.dbname, opt.login,opt.passwd)
     sock = xmlrpclib.ServerProxy(opt.apiurl+'xmlrpc/object')
+    user_id,host_id=get_user_id(USER, hostname)
+
     if 1: #repo
         git_ids=git_search()
         bzr_ids=bzr_search()
         clone_ids=git_ids+bzr_ids
+    if args and args[0] in ['render','pg']:
+        if PASS:
+            key=PASS
+        else:
+            key=getpass.getpass()
+        
     if len(args)==1:
         cmd=args[0]
         if cmd=='clone':
@@ -612,11 +720,9 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
         elif cmd=='push':
             git_push(git_ids)
             bzr_push(bzr_ids)
+        elif cmd=='pg':
+            cluster_ids = update_clusters(host_id,key)
         elif cmd=='render':
-            if PASS:
-                key=PASS
-            else:
-                key=getpass.getpass()
             render(key)
 
     elif len(args) in [2,3]:
@@ -637,19 +743,46 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                 key=PASS
             else:
                 key=getpass.getpass()
-            deploy_ids=search('deploy.deploy',[])
-            deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
-            dps=read('deploy.deploy',deploy_ids,['site_name',
-                                                 'options',
-                                                 'db_password',
-                                                 'admin_password',
-                                                 'clone_ids'])
-            for d in dps:
-                name=d['site_name']
-                prod_config=os.path.join(ROOT, 'server7%s.conf'%name)
+            application_ids=search('deploy.application',[])
+            apps = read('deploy.application', application_ids, ['name','repository_ids'] )
+            #deploy_ids=search('deploy.deploy',[])
+            #deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
+            #dps=read('deploy.deploy',deploy_ids,['site_name',
+            #                                     'options',
+            #                                     'db_password',
+            #                                     'admin_password',
+            #                                     'application_id'])
+            for app in apps:
+                app_name=app['name']
+                app_id=app['id']
+                repository_ids=app['repository_ids']
+                #name=d['site_name']
+                prod_config=os.path.join(ROOT, 'server7%s.conf'%app_name)
+                arg=[('application_id','=',app_id),('user_id','=',user_id)]
+                val={'application_id':app_id,
+                     'user_id':user_id}
+                
+                    #'validated_config_file':prod_config,
+                    #'validated_server_path':server_path,
+                    #'validated_root':ROOT}
+                
+                deploy_ids=update_one('deploy.deploy',arg, val)
+                dps =read('deploy.deploy',[deploy_ids],['site_name',
+                                                        'options',
+                                                        'db_password',
+                                                        'admin_password',
+                                                        'application_id'])
+                #assert len(deploy_ids)==1
+                #print 'DPS', dps, len(dps)
+                assert len(dps)==1
+                d=dps[0]
                 with open(prod_config, 'wb') as cf:
                     print 'writing config: ', prod_config
-                    clone_ids = d['clone_ids']
+                    #app_id,app_name=d['application_id']
+                    #app_ret=read('deploy.application', [app_id], ['repository_ids'])
+                    #assert len(app_ret)==1
+                    
+                    #repository_ids = app_ret[0]['repository_ids']
                     options=eval(d['options'])
                     db_pass=d['db_password']
                     admin_pass=d['admin_password']                    
@@ -657,14 +790,23 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                     admin_pass=base64.decodestring(admin_pass)
                     options.append( ('db_password', decrypt(key,db_pass)) )
                     options.append( ('admin_password', decrypt(key,admin_pass)) )
-                    conf,ret=generate_config(clone_ids,options)
+                    conf,ret=generate_config(repository_ids,options)
                     conf.write(cf)
-                    for c_id,addon_path in ret:                        
-                        write('deploy.repository.clone',[c_id],{'validated_addon_path':addon_path})
-                    c_id,server_path=get_server(clone_ids)
-                    write('deploy.deploy',[ d['id'] ], {'validated_config_file':prod_config,
-                                                        'validated_server_path':server_path,
-                                                        'validated_root':ROOT})
+                    for c_id,addon_path in ret:
+                        arg=[('remote_id','=',c_id),('local_user_id','=',user_id)]
+                        update_one('deploy.repository.clone',arg, {'remote_id':c_id,'local_user_id':user_id, 'validated_addon_path':addon_path} )
+                        #write('deploy.repository.clone',[c_id],{'validated_addon_path':addon_path})
+
+                    c_id,server_path=get_server(repository_ids)
+                    arg=[('application_id','=',app_id),('user_id','=',user_id)]
+                    val={#'name': app_name,
+                         'application_id':app_id,
+                         'user_id':user_id,
+                         'validated_config_file':prod_config,
+                         'validated_server_path':server_path,
+                         'validated_root':ROOT}
+                    #print val
+                    update_one('deploy.deploy',arg, val)
         elif cmd=='config' and cmd2=='show':
             deploy_ids=search('deploy.deploy',[])
             deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
@@ -672,7 +814,7 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                                                  'options',
                                                  'db_password',
                                                  'admin_password',
-                                                 'clone_ids',
+                                                 'repository_ids',
                                                  'validated_config_file',
                                                  'validated_server_path',
                                                  ])
@@ -680,9 +822,9 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                 print 44*'__'
                 print "%s/openerp-server -c %s"%( d['validated_server_path'],d['validated_config_file'] )
                 print 'Addon paths:'
-                clone_ids = d['clone_ids']
-                clones=read('deploy.repository.clone',clone_ids,['validated_addon_path','name',
-                                                                 'local_location_fnc'])
+                repository_ids = d['repository_ids']
+                clones=read('deploy.repository.clone',repository_ids,['validated_addon_path','name',
+                                                                      'local_location'])
                 for c in clones:
                     print c['name'], c['validated_addon_path']
 
