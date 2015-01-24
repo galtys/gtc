@@ -725,7 +725,7 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
         elif cmd=='render':
             render(key)
 
-    elif len(args) in [2,3]:
+    elif len(args) in [2]:
         cmd,cmd2=args
         #import simplecrypt
         #ciphertext = encrypt('password', plaintext)
@@ -738,7 +738,30 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             print [decrypt(key,d)]
         elif cmd=='export':
             data_export(cmd2)
-        elif cmd=='config' and cmd2=='write':
+        elif cmd=='config' and cmd2=='show':
+            deploy_ids=search('deploy.deploy',[('user_id','=',user_id)])
+            #deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
+            dps=read('deploy.deploy',deploy_ids,['site_name',
+                                                 'options',
+                                                 'db_password',
+                                                 'admin_password',
+                                                 #'repository_ids',
+                                                 'validated_config_file',
+                                                 'validated_server_path',
+                                                 ])
+            for d in dps:
+                print 44*'__'
+                print "%s/openerp-server -c %s"%( d['validated_server_path'],d['validated_config_file'] )
+                #print 'Addon paths:'
+                #repository_ids = d['repository_ids']
+                #clones=read('deploy.repository.clone',repository_ids,['validated_addon_path','name',
+                #                                                      'local_location'])
+                #for c in clones:
+                #    print c['name'], c['validated_addon_path']
+
+    elif len(args)==3:
+        cmd,cmd2,dbuser=args
+        if cmd=='config' and cmd2=='write':
             if PASS:
                 key=PASS
             else:
@@ -757,8 +780,11 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                 app_id=app['id']
                 repository_ids=app['repository_ids']
                 #name=d['site_name']
-                prod_config=os.path.join(ROOT, 'server7%s.conf'%app_name)
-                arg=[('application_id','=',app_id),('user_id','=',user_id)]
+                pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
+                assert len(pg_user_ids)==1
+                pg_user_id=pg_user_ids[0]
+                prod_config=os.path.join(ROOT, 'server7%s.conf'%app_name)               
+                arg=[('application_id','=',app_id),('user_id','=',user_id),('pg_user_id','=',pg_user_id)]
                 val={'application_id':app_id,
                      'user_id':user_id}
                 
@@ -767,6 +793,29 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                     #'validated_root':ROOT}
                 
                 deploy_ids=update_one('deploy.deploy',arg, val)
+                dps =read('deploy.deploy',[deploy_ids],['site_name',
+                                                        'password_id',
+                                                        'options_id',
+                                                        'application_id'])
+                for d in dps:
+                    if d['password_id']:
+                        pass
+                    else:
+                        passwd=generate_password()
+                        x=encrypt(key,passwd)
+                        passwd2=base64.b64encode(x)
+                        pass_id=create('deploy.password',{'name':passwd,
+                                                          'password':passwd2})
+                        
+                        update_one('deploy.deploy',[('id','=',d['id'])],
+                                   {'password_id':pass_id})
+                    if d['options_id']:
+                        pass
+                    else:
+                        options_ids=search('deploy.options',[('name','=','dev')])
+                        update_one('deploy.deploy',[('id','=',d['id'])],
+                                   {'options_id':options_ids[0] })
+                        
                 dps =read('deploy.deploy',[deploy_ids],['site_name',
                                                         'options',
                                                         'db_password',
@@ -807,26 +856,6 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                          'validated_root':ROOT}
                     #print val
                     update_one('deploy.deploy',arg, val)
-        elif cmd=='config' and cmd2=='show':
-            deploy_ids=search('deploy.deploy',[])
-            deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
-            dps=read('deploy.deploy',deploy_ids,['site_name',
-                                                 'options',
-                                                 'db_password',
-                                                 'admin_password',
-                                                 'repository_ids',
-                                                 'validated_config_file',
-                                                 'validated_server_path',
-                                                 ])
-            for d in dps:
-                print 44*'__'
-                print "%s/openerp-server -c %s"%( d['validated_server_path'],d['validated_config_file'] )
-                print 'Addon paths:'
-                repository_ids = d['repository_ids']
-                clones=read('deploy.repository.clone',repository_ids,['validated_addon_path','name',
-                                                                      'local_location'])
-                for c in clones:
-                    print c['name'], c['validated_addon_path']
 
     return
     for site in sites:
