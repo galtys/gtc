@@ -42,42 +42,48 @@ import subprocess
 from simplecrypt import encrypt, decrypt
 import base64
 
-def chown(fn,user,group,options=''): #-R
+def sudo_chown(fn,user,group,options=''): #-R
 
     if options:
         o=options.split()
     else:
         o=[]
-    
-    ret=subprocess.call(["chown","%s:%s"%(user,group),fn]+o )
-    #print [ret]
+    arg=["sudo","chown","%s:%s"%(user,group),fn]+o 
+    ret=subprocess.call(arg)
     return ret
+def sudo_mv(src, dst):
+    arg=["sudo","mv",src,dst]
+    ret=subprocess.call(arg)
+    return ret
+
 def run_chmod(fn, chmod):
-    arg=["chmod",chmod,fn]
+    arg=["sudo","chmod",chmod,fn]
     if DEBUG:
         print arg
     subprocess.call(arg)
 
+#import tempfile
+#import shutil
 def write_file(fn,c,user,group,chmod):
     current_login=getpass.getuser()
     USER=current_login
     GROUP=pwd.getpwnam(current_login).pw_name
-    
+    #temp_fp = tempfile.TemporaryFile(mode='wb')
+    #temp_fp.write(c)
+    #temp_fp.close(
+
+    tmp='tmp_buff'
+    #if DEBUG:
+    #    print "Writing to tmpfile: ", tmp
+    fp=open(tmp,'wb')
+    fp.write(c)
+    fp.close()
+    sudo_chown(tmp, user, group)
     if DEBUG:
-        print "Writing to: ", fn
-    try:
-        fp=open(fn,'wb')
-        fp.write(c)
-        fp.close()
-    except IOError:
-        if DEBUG:
-            print "   Can not create/write to: ", fn
-    if (user!=USER) or (group!=GROUP):
-        if DEBUG:
-            print "   Current user: %s"%USER
-            print "   Current group: %s"%GROUP
-            print "   Chmod to: %s:%s"%(user,group)
-        chown(fn,user,group)
+        print "Moving to destination : ", fn
+    sudo_mv(tmp, fn)
+    sudo_chown(fn, user, group)
+
     if chmod:
         run_chmod(fn,chmod)
 
@@ -118,18 +124,17 @@ import os
 def update_shmem(mem_total):
     pass
 
-def run_bash(t_id,r_id,name,content,subprocess_arg):
-    script=os.path.join(os.getcwd(), "script_%d_%d.sh"%(t_id,r_id) )
-    file(script,'wb').write(content)
-    subprocess.call(["chmod","+x",script])
-    #print [name, subprocess_arg]
-    arg=eval(subprocess_arg)
-    print '   executing bash script', name,script,arg
+def run_bash(f_id,name,content,subprocess_arg):
+    script_name=os.path.join(os.getcwd(), "script_%d.sh"%(f_id) )
+    file(script_name,'wb').write(content)
+    subprocess.call(["chmod","+x",script_name])
 
-    subprocess.call(arg )
-    #print '   deleting bash script', script
-    subprocess.call(["rm",script])
-
+    arg = eval(subprocess_arg)
+    print 44*'_'
+    print 'Executing bash script name %s with args: %s'%( name, arg)
+    ret=subprocess.call(arg )
+    subprocess.call(["rm",script_name])
+    return ret
 
 def render_pass(content, pass_map,key):        
     for r in pass_map:
@@ -162,6 +167,150 @@ def render(key):
             ret=eval(python_function)
         elif _type=='bash' and model=='deploy.host':            
             run_bash(t_id,r_id,name,content,subprocess_arg)
+
+def password(cmd2,key):
+    field_ids = search('ir.model.fields', [('relation','=','deploy.password')])
+    fields = read('ir.model.fields', field_ids, ['name','model_id'] )
+    for f in fields:
+        print 44*'_'
+        model_id,model = f['model_id']
+        #print model_id, model
+        res_ids = search(model, [])
+        field_name = f['name']
+        #print f,model, res_ids, field_name
+        #print field_name
+        records = read(model, res_ids, [field_name])
+        for r in records:
+            if field_name not in r:
+                continue
+            pname="PASS_%s_%s_%s"%(model.replace('.','_'),r['id'],field_name)
+            if cmd2=='show':
+                pr=r[field_name]
+                print 'Model: %s, field: %s, res_id: %s' % (model, field_name, r['id'] )
+                if pr:
+                    p=read('deploy.password', r[field_name][0], ['name','password'])
+                    print '   Passord [id] name: [%s] %s'% (p['id'], p['name'] )
+                    password=p['password']
+                    ps2=base64.b64decode(password)
+                    print '   Encrypted password b64: [%s]'% password
+                    x=decrypt(key,ps2)
+                    print '   Decrypted password: [%s]'% x
+                else:
+                    print '   No password stored.'
+            elif cmd2=='update':
+                if not r[field_name]:
+                    passwd=generate_password()
+                    x=encrypt(key,passwd)
+                    passwd2=base64.b64encode(x)
+                    pass_id=create('deploy.password',{'name':pname,
+                                                      'password':passwd2})
+                    update_one(model,[('id','=',r['id'])],{field_name:pass_id})
+            elif cmd2=='force_update':
+                if 1:#not r[field_name]:
+                    passwd=generate_password()
+                    x=encrypt(key,passwd)
+                    passwd2=base64.b64encode(x)
+
+                    pass_id=create('deploy.password',{'name':pname,
+                                                      'password':passwd2})
+                    update_one(model,[('id','=',r['id'])],{field_name:pass_id})
+
+def run(arg, user_id, host_id, key):
+    #('template_id.type','in',['bash','python']),
+    file_ids = search('deploy.file', arg)
+    pass_ids=search('deploy.password',[] )
+    pass_map=read('deploy.password', pass_ids,['pass_tag','password'] )
+
+    files = read('deploy.file', file_ids, ['template_id',
+                                           'command',
+                                           'res_id',
+                                           'encrypted',
+                                           'sequence',
+                                           'user',
+                                           'group',
+                                           'file_written',
+                                           'content_written',
+                                           'file_generated',
+                                           'content_generated'])
+
+    for f in files:
+        t_id=f['template_id'][0]
+        f_id=f['id']
+        content_generated=f['content_generated']
+        content=render_pass(content_generated, pass_map,key)
+        t=read('deploy.mako.template', t_id, ['python_function',
+                                              'subprocess_arg',
+                                              'type',
+                                              'name',
+                                              'chmod'])
+        _type=t['type']
+        if _type=='template':
+            file_generated=f['file_generated']
+
+            chmod=t['chmod']
+            user=f['user']
+            group=f['group']
+            write_file(file_generated, content,user,group,chmod)
+            val={'file_written':file_generated,
+                 'command':'run',
+                 'content_written':content_generated}
+            #print val
+            write('deploy.file',f['id'], val)
+        elif _type=='python':
+            #content=f['content_generated']
+            python_function=t['python_function']
+            my_code=compile(content, 'mypy', "exec")
+            #print 'executing python code', [t_id,r_id,python_function]            
+            exec my_code
+            ret=eval(python_function)
+            val={'command':'run',
+                 'content_written':''}
+            #print val
+            write('deploy.file',f['id'], val)
+
+        elif _type=='bash':
+            #content=f['content_generated']
+            subprocess_arg=t['subprocess_arg']
+            name=t['name']
+            ret=run_bash(f_id,name,content,subprocess_arg)
+            val={'command':'run',
+                 'content_written':''}
+            #print val
+            write('deploy.file',f['id'], val)
+
+    return
+
+def init(cmd2, user_id, host_id):
+    t_ids = search('deploy.mako.template', [('model','=',cmd2)] )
+    templates = read('deploy.mako.template', t_ids,['name','domain'])
+    i=0
+    for t in templates:
+        t_id=t['id']
+        domain=t['domain']
+        if domain:
+            domain=domain.replace('active_user_id',str(user_id) )
+            domain=domain.replace('active_host_id',str(host_id) )
+            arg=eval(domain)
+        else:
+            arg=[]
+        #print arg
+        res_ids=search(cmd2, arg )
+
+        for res_id in res_ids:
+            arg=[('template_id','=',t_id),
+                 ('user_id','=',user_id),
+                 ('res_id','=',res_id)]
+
+            val={'command':'init',
+                 
+                 'user_id':user_id,
+                 'template_id':t_id,
+                 'res_id':res_id,
+                 'sequence':i}
+            #print arg, val
+            update_one('deploy.file',arg,val)
+            i+=10
+
 def data_export(master_data_module):
     m_id=search('ir.module.module', [('name','=',master_data_module)] )
     #print m_id,master_data_module
@@ -613,15 +762,6 @@ def update_clusters(host_id,key):
                 pg_user_id=update_one('deploy.pg.user',arg,val)
             pg_user_ids = search('deploy.pg.user',[('cluster_id','=',pg_id)])
             pg_users = read('deploy.pg.user',pg_user_ids,['login','password_id'])
-            for pg in pg_users:
-                if not pg['password_id']:
-                    passwd=generate_password()
-                    x=encrypt(key,passwd)
-                    passwd2=base64.b64encode(x)
-                    pass_id=create('deploy.password',{'name':passwd,
-                                                      'password':passwd2})
-                    update_one('deploy.pg.user',[('id','=',pg['id'])],{'password_id':pass_id})
-                    update_pg_user_passwd(pg['login'],passwd,port=port)
 
 def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     
@@ -700,7 +840,7 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
         git_ids=git_search()
         bzr_ids=bzr_search()
         clone_ids=git_ids+bzr_ids
-    if args and args[0] in ['render','pg']:
+    if args and args[0] in ['render','pg', 'run','password']:
         if PASS:
             key=PASS
         else:
@@ -722,15 +862,24 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             bzr_push(bzr_ids)
         elif cmd=='pg':
             cluster_ids = update_clusters(host_id,key)
-        elif cmd=='render':
-            render(key)
+        elif cmd=='run':
+            arg=[('user_id','=',user_id)]
+            run(arg, user_id, host_id,key)
 
     elif len(args) in [2]:
         cmd,cmd2=args
         #import simplecrypt
         #ciphertext = encrypt('password', plaintext)
         #plaintext = decrypt('password', ciphertext)
-        if cmd=='encrypt':
+        
+        if cmd=='init':
+            init(cmd2, user_id, host_id)
+        elif cmd=='run':
+            arg=[('user_id','=',user_id), ('template_id.model','=',cmd2)]
+            run(arg, user_id, host_id,key)
+        elif cmd=='password':
+            password(cmd2,key)
+        elif cmd=='encrypt':
             x=encrypt(key,cmd2)
             t=base64.b64encode(x)
             print [t]
@@ -798,17 +947,6 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                                                         'options_id',
                                                         'application_id'])
                 for d in dps:
-                    if d['password_id']:
-                        pass
-                    else:
-                        passwd=generate_password()
-                        x=encrypt(key,passwd)
-                        passwd2=base64.b64encode(x)
-                        pass_id=create('deploy.password',{'name':passwd,
-                                                          'password':passwd2})
-                        
-                        update_one('deploy.deploy',[('id','=',d['id'])],
-                                   {'password_id':pass_id})
                     if d['options_id']:
                         pass
                     else:
