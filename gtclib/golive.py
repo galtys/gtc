@@ -541,56 +541,10 @@ def git_pull(clone_ids):
             subprocess.call(args)
             os.chdir(cwd)
 
-WSGI_SCRIPT="""import sys
-import openerp
-openerp.tools.config.parse_config(['--config=%s'])
-application = openerp.service.wsgi_server.application
-""" 
 
 def get_wsgi(prod_config):
     return WSGI_SCRIPT % (prod_config)
 
-VHOST="""<VirtualHost ${IP}:${PORT}>
-        ServerName ${ServerName}
-        %if ServerAlias:
-            ServerAlias ${ServerAlias}
-        %endif
-        %if ssl:
-           SSLEngine on
-           SSLCertificateFile ${SSLCertificateFile}
-           SSLCertificateKeyFile ${SSLCertificateKeyFile}
-        %endif
-        %if SSLCACertificateFile:
-           SSLCACertificateFile ${SSLCACertificateFile}
-        %endif
-        %if ProxPass:
-            ProxyPass / ${ProxyPass}
-            ProxyPassReverse / ${ProxyPass}
-        %elif Redirect:
-            #Redirect permanent / https://secure.example.com/
-            Redirect / ${Redirect}
-        %else:
-        <%
-          apache_log_dir="${APACHE_LOG_DIR}"
-        %>
-        WSGIScriptAlias / ${WSGIScriptAlias}
-        WSGIDaemonProcess ${name} user=${user} group=${group} processes=${processes} python-path=${python_path} display-name=${name}
-        WSGIProcessGroup ${name}
-        <Directory ${python_path}>
-            Order allow,deny
-            Allow from all
-        </Directory>
-        ErrorLog ${apache_log_dir}/openerp-${name}-error.log
-        # Possible values include: debug, info, notice, warn, error, crit,                                                                                                                                         
-        # alert, emerg.                                                                                                                                                                                            
-        LogLevel debug
-        CustomLog ${apache_log_dir}/openerp-${name}.log combined
-
-        %endif
-</VirtualHost>
-"""
-
-SELFSSL="openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/apache2/ssl/apache.key -out /etc/apache2/ssl/apache.crt"
 
 def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None, processes=2, SSLCertificateFile=None, 
               SSLCertificateKeyFile=None, 
@@ -826,9 +780,6 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     opt, args = parser.parse_args(sys_args)
 
     cmds, dbs = split_args(args)
-    ROOT=os.path.join(ROOT, opt.subdir)
-    if not os.path.isdir(ROOT):
-        os.makedirs(ROOT) #create if it does not exist
 
     sock_common = xmlrpclib.ServerProxy (opt.apiurl+'xmlrpc/common')
 
@@ -865,7 +816,7 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
         elif cmd=='run':
             arg=[('user_id','=',user_id)]
             run(arg, user_id, host_id,key)
-
+            
     elif len(args) in [2]:
         cmd,cmd2=args
         #import simplecrypt
@@ -895,53 +846,67 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                                                  'db_password',
                                                  'admin_password',
                                                  #'repository_ids',
+                                                 'odoo_config',
                                                  'validated_config_file',
                                                  'validated_server_path',
                                                  ])
             for d in dps:
                 print 44*'__'
-                print "%s/openerp-server -c %s"%( d['validated_server_path'],d['validated_config_file'] )
+                print "%s/openerp-server -c %s"%( d['validated_server_path'],d['odoo_config'] )
                 #print 'Addon paths:'
                 #repository_ids = d['repository_ids']
                 #clones=read('deploy.repository.clone',repository_ids,['validated_addon_path','name',
                 #                                                      'local_location'])
                 #for c in clones:
                 #    print c['name'], c['validated_addon_path']
-
+            
     elif len(args)==3:
         cmd,cmd2,dbuser=args
-        if cmd=='config' and cmd2=='write':
+        if cmd=='config' and cmd2=='dir':
+            pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
+            assert len(pg_user_ids)==1
+            pg_user_id=pg_user_ids[0]
+
+            application_ids=search('deploy.application',[])
+            apps = read('deploy.application', application_ids, ['name','repository_ids'] )
+
+            ROOT=os.path.join(ROOT, opt.subdir)
+            if not os.path.isdir(ROOT):
+                os.makedirs(ROOT) #create if it does not exist
+
+            for app in apps:
+                app_name=app['name']
+                app_id=app['id']
+                repository_ids=app['repository_ids']
+                #name=d['site_name']
+
+                arg=[('application_id','=',app_id),('user_id','=',user_id),('pg_user_id','=',pg_user_id)]
+                val={'application_id':app_id,
+                     'pg_user_id':pg_user_id,
+                     #'ROOT':ROOT,
+                     'user_id':user_id,
+                   }
+
+        elif cmd=='config' and cmd2=='write':
+            pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
+            assert len(pg_user_ids)==1
+            pg_user_id=pg_user_ids[0]
+
             if PASS:
                 key=PASS
             else:
                 key=getpass.getpass()
             application_ids=search('deploy.application',[])
             apps = read('deploy.application', application_ids, ['name','repository_ids'] )
-            #deploy_ids=search('deploy.deploy',[])
-            #deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
-            #dps=read('deploy.deploy',deploy_ids,['site_name',
-            #                                     'options',
-            #                                     'db_password',
-            #                                     'admin_password',
-            #                                     'application_id'])
             for app in apps:
+
                 app_name=app['name']
                 app_id=app['id']
                 repository_ids=app['repository_ids']
-                #name=d['site_name']
-                pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
-                assert len(pg_user_ids)==1
-                pg_user_id=pg_user_ids[0]
-                prod_config=os.path.join(ROOT, 'server7%s.conf'%app_name)               
+
+                #prod_config=os.path.join(ROOT, 'server7%s.conf'%app_name)               
                 arg=[('application_id','=',app_id),('user_id','=',user_id),('pg_user_id','=',pg_user_id)]
-                val={'application_id':app_id,
-                     'user_id':user_id}
-                
-                    #'validated_config_file':prod_config,
-                    #'validated_server_path':server_path,
-                    #'validated_root':ROOT}
-                
-                deploy_ids=update_one('deploy.deploy',arg, val)
+                deploy_ids=search('deploy.deploy',arg)
                 dps =read('deploy.deploy',[deploy_ids],['site_name',
                                                         'password_id',
                                                         'options_id',
@@ -955,21 +920,16 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                                    {'options_id':options_ids[0] })
                         
                 dps =read('deploy.deploy',[deploy_ids],['site_name',
+                                                        'odoo_config',
                                                         'options',
                                                         'db_password',
                                                         'admin_password',
                                                         'application_id'])
-                #assert len(deploy_ids)==1
-                #print 'DPS', dps, len(dps)
                 assert len(dps)==1
                 d=dps[0]
+                prod_config = d['odoo_config']
                 with open(prod_config, 'wb') as cf:
                     print 'writing config: ', prod_config
-                    #app_id,app_name=d['application_id']
-                    #app_ret=read('deploy.application', [app_id], ['repository_ids'])
-                    #assert len(app_ret)==1
-                    
-                    #repository_ids = app_ret[0]['repository_ids']
                     options=eval(d['options'])
                     db_pass=d['db_password']
                     admin_pass=d['admin_password']                    
@@ -981,18 +941,18 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                     conf.write(cf)
                     for c_id,addon_path in ret:
                         arg=[('remote_id','=',c_id),('local_user_id','=',user_id)]
-                        update_one('deploy.repository.clone',arg, {'remote_id':c_id,'local_user_id':user_id, 'validated_addon_path':addon_path} )
-                        #write('deploy.repository.clone',[c_id],{'validated_addon_path':addon_path})
+                        val={'remote_id':c_id,
+                             'local_user_id':user_id, 
+                             'validated_addon_path':addon_path}
+                        update_one('deploy.repository.clone',arg, val )
 
                     c_id,server_path=get_server(repository_ids)
                     arg=[('application_id','=',app_id),('user_id','=',user_id)]
-                    val={#'name': app_name,
-                         'application_id':app_id,
+                    val={'application_id':app_id,
                          'user_id':user_id,
                          'validated_config_file':prod_config,
                          'validated_server_path':server_path,
                          'validated_root':ROOT}
-                    #print val
                     update_one('deploy.deploy',arg, val)
 
     return
