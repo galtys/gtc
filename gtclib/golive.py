@@ -205,7 +205,7 @@ def password(cmd2,key):
                     pass_id=create('deploy.password',{'name':pname,
                                                       'password':passwd2})
                     update_one(model,[('id','=',r['id'])],{field_name:pass_id})
-            elif cmd2=='force_update':
+            elif cmd2=='force_update' and False: #dangerous
                 if 1:#not r[field_name]:
                     passwd=generate_password()
                     x=encrypt(key,passwd)
@@ -402,6 +402,7 @@ def generate_config(clone_ids,options, fn=None, logfile=None):
 def bzr_pull(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     for c in items:
+        
         #print c['mkdir']
         local_dir=get_local_dir(c)                
         cwd=os.getcwd()
@@ -516,11 +517,7 @@ def bzr_push(clone_ids):
 def git_pull(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc','branch'] )
     for c in items:
-        #print c['mkdir']
         local_dir=get_local_dir(c)
-#    for xxx in remote_branches:
- #       rb, branch,addon_subdir,is_module_path = xxx
-  #      local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
         cwd=os.getcwd()
         branch=c['branch']
         if os.path.isdir(local_dir):
@@ -708,20 +705,33 @@ def update_clusters(host_id,key):
             pg_users = read('deploy.pg.user',pg_user_ids,['login','password_id'])
 
 def update_repository(repository_ids, user_id, host_id):
-    ret=get_addons(repository_ids)
     out_ids=[]
-    for c_id,addon_path in ret:
-        c=read('deploy.repository',c_id,['use','type','name'])
+    for c_id in repository_ids:
+        c=read('deploy.repository',c_id,['use','type','name','branch',
+                                         'addon_subdir',
+                                         'is_module_path',
+                                         'remote_name'])
         arg=[('remote_id','=',c_id),('local_user_id','=',user_id)]
         val={'remote_id':c_id,
              'local_user_id':user_id, 
+             'addon_subdir': c['addon_subdir'],
+             'is_module_path':c['is_module_path'],
+             'remote_name':c['remote_name'],
              'use':c['use'],
+             'branch':c['branch'],
              'type':c['type'],
-             'host_id':host_id,
-             'validated_addon_path':addon_path}
+             'host_id':host_id}
         r_id=update_one('deploy.repository',arg, val )
         out_ids.append(r_id)
     return out_ids
+def validate_addon_path(repository_ids):
+    ret=get_addons(repository_ids)
+    for c_id, addon_path in ret:
+        arg=[('id','=',c_id)]
+        val={'validated_addon_path':addon_path}
+        #print val
+        r_id=update_one('deploy.repository',arg, val )
+
 def apps2repository(application_ids):
     apps = read('deploy.application', application_ids, ['name','repository_ids'] )
     app_repository_ids=[]
@@ -730,7 +740,7 @@ def apps2repository(application_ids):
             if ar_id not in app_repository_ids:
                 app_repository_ids.append(ar_id)
     return app_repository_ids
-
+    
 def update_deployments(opt,app_ids, user_id, pg_user_id, name='%'):
     #r_ids = apps2repository(app_ids)
     user = read('deploy.host.user', user_id, ['name','login','home'])
@@ -837,19 +847,33 @@ def parse(sys_args):
     uid = sock_common.login(opt.dbname, opt.login,opt.passwd)
     sock = xmlrpclib.ServerProxy(opt.apiurl+'xmlrpc/object')
     user_id,host_id=get_user_id(USER, hostname)
-    application_ids=search('deploy.application',[])
+
+    user_apps=read('deploy.host.user',user_id, ['app_ids'])
+
+    application_ids=user_apps['app_ids']#search('deploy.application',[])
 
     app_repository_ids = apps2repository(application_ids)
-    git_ids=git_search(app_repository_ids)
-    bzr_ids=bzr_search(app_repository_ids)
+    update_repository(app_repository_ids, user_id, host_id)
+    arg=[('local_user_id','=',user_id),
+         ('use','in',['server','addon']),
+         ('remote_id','in',app_repository_ids)]
+    local_r_ids = search('deploy.repository',arg)
+    validate_addon_path(local_r_ids)
 
-        
+
+    arg=[('local_user_id','=',user_id),
+         ('remote_id','in',app_repository_ids)]
+    local_r_ids = search('deploy.repository',arg)
+    #validate_addon_path(local_r_ids)
+    git_ids=git_search(local_r_ids)
+    bzr_ids=bzr_search(local_r_ids)
+
+
     if len(args)==1:
         cmd=args[0]
         if cmd=='clone':
             git_clone(git_ids)
             bzr_branch(bzr_ids)
-            update_repository(app_repository_ids, user_id, host_id)
         elif cmd=='status':
             git_status(git_ids)
             bzr_status(bzr_ids)
@@ -904,18 +928,46 @@ def parse(sys_args):
                 #                                                      'local_location'])
                 #for c in clones:
                 #    print c['name'], c['validated_addon_path']
-            
-    elif len(args)==3:
-        cmd,cmd2,dbuser=args
+    elif len(args)==4:
+        cmd,cmd2,dbuser,apps_str=args
         pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
         assert len(pg_user_ids)==1
         pg_user_id=pg_user_ids[0]
+        if apps_str=='all':
+            app_arg=[('id','in',application_ids)]
+        else:
+            app_arg=[('name','in', app_str.split(',') ), ('id','in',application_ids) ]
+        update_app_ids=search('deploy.application',app_arg)
+
+        if cmd=='update' and cmd2=='deployments':
+            for app_id in update_app_ids:
+                a=read('deploy.application', app_id, ['name'])
+                app_name = a['name']
+                arg=[('application_id','=',app_id),('user_id','=',user_id),('pg_user_id','=',pg_user_id)]
+                val={'application_id':app_id,
+                     'user_id':user_id,
+                     'pg_user_id':pg_user_id}
+                d_id=update_one('deploy.deploy',arg, val)
+                d=read('deploy.deploy', d_id, ['name','site_name','mode'])
+                if not d['name']:
+                    write('deploy.deploy',d_id,{'name':app_name})
+                if not d['site_name']:
+                    write('deploy.deploy',d_id,{'site_name':app_name})
+                if not d['mode']:
+                    write('deploy.deploy',d_id,{'mode':'dev'})
+        
+
+        #elif len(args)==3:
+        #cmd,cmd2,dbuser=args
+        #pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
+        #assert len(pg_user_ids)==1
+        #pg_user_id=pg_user_ids[0]
 
         if cmd=='validate' and cmd2=='config':
 
-            update_deployments(opt,application_ids, user_id, pg_user_id, name='%')
+            update_deployments(opt,update_app_ids, user_id, pg_user_id, name='%')
 
-        elif cmd=='config' and cmd2=='write':
+        elif cmd=='config' and cmd2=='write': #deprecated
             pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
             assert len(pg_user_ids)==1
             pg_user_id=pg_user_ids[0]
