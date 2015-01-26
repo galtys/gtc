@@ -815,7 +815,7 @@ def parse(sys_args):
                      dest='apiurl',
                      help="Default: [%default]",
                      #default='http://golive-ontime.co.uk:8066/'
-                     default='http://localhost:10069/'
+                     default='http://galtys.com:10069/'
                      )
     group.add_option("--login",
                      dest='login',
