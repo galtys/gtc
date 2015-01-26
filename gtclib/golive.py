@@ -329,20 +329,19 @@ def is_module(p):
                 if os.path.isfile(t):
                     ret=True
     return ret
+def get_local_dir(item):
+    l=item['local_location_fnc']
+    return l
 
 def get_server(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     server_path=None
     spcnt=0 #allow only one server path
     c_id=False
-    #print 'GET SERVER'
     for c in items:
         a=get_local_dir(c) 
-        #print c,a
         if os.path.isdir(a):
             server=os.path.join(a,'openerp/addons/base')
-            #web=os.path.join(a, 'addons/web')
-            #add=os.path.join(a, 'addons')
             if os.path.isdir(server):
                 server_path=a
                 c_id=c['id']
@@ -355,7 +354,6 @@ def get_parent_dir(path):
     arg=path.split('/')[-2:-1]
     arg=['/']+path.split('/')[:-1]
     p=os.path.join(*arg )
-    #print 'Parent Dir for ', path, arg,p
     return p
     
 def get_addons(clone_ids):
@@ -400,14 +398,6 @@ def generate_config(clone_ids,options, fn=None, logfile=None):
     addons=[x[1] for x in ret if x[1]]
     c=create_odoo_config(options,addons,fn=fn,logfile=logfile)
     return c,ret
-def get_local_dir(item):
-    #current_login=getpass.getuser()
-    HOME=os.environ['HOME']
-    l=item['local_location_fnc']
-    if l.startswith('/'):
-        return l
-    else:
-        return os.path.join(HOME,l)
 
 def bzr_pull(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
@@ -653,7 +643,7 @@ def split_args(args):
     dbs=set(args)-cmds
     return list(cmds), list(dbs)
 
-#def host_filter(ids, model='deploy.repository.clone',field='local_host_id'):
+#def host_filter(ids, model='deploy.repository',field='local_host_id'):
 def host_filter(ids, model=None,field=None):
     out=[]
     for h in read(model,ids,[field]):
@@ -661,12 +651,12 @@ def host_filter(ids, model=None,field=None):
         if hostname.startswith(h_name):
             out.append(h['id'])
     return out
-def git_search():   
-    ret = search('deploy.repository',[('type','=','git')] )
+def git_search(app_repository_ids):   
+    ret = search('deploy.repository',[('type','=','git'),('id','in',app_repository_ids)] )
     return ret #host_filter(ret)
  
-def bzr_search():
-    ret = search('deploy.repository',[('type','=','bzr')] )
+def bzr_search(app_repository_ids):
+    ret = search('deploy.repository',[('type','=','bzr'),('id','in',app_repository_ids)] )
     return ret #host_filter(ret)
 def deploy_search():
     return 
@@ -717,35 +707,100 @@ def update_clusters(host_id,key):
             pg_user_ids = search('deploy.pg.user',[('cluster_id','=',pg_id)])
             pg_users = read('deploy.pg.user',pg_user_ids,['login','password_id'])
 
-def parse(sys_args,USER=None, GROUP=None, ROOT=None):
+def update_repository(repository_ids, user_id, host_id):
+    ret=get_addons(repository_ids)
+    out_ids=[]
+    for c_id,addon_path in ret:
+        c=read('deploy.repository',c_id,['use','type','name'])
+        arg=[('remote_id','=',c_id),('local_user_id','=',user_id)]
+        val={'remote_id':c_id,
+             'local_user_id':user_id, 
+             'use':c['use'],
+             'type':c['type'],
+             'host_id':host_id,
+             'validated_addon_path':addon_path}
+        r_id=update_one('deploy.repository',arg, val )
+        out_ids.append(r_id)
+    return out_ids
+def apps2repository(application_ids):
+    apps = read('deploy.application', application_ids, ['name','repository_ids'] )
+    app_repository_ids=[]
+    for a in apps:
+        for ar_id in a['repository_ids']:
+            if ar_id not in app_repository_ids:
+                app_repository_ids.append(ar_id)
+    return app_repository_ids
+
+def update_deployments(opt,app_ids, user_id, pg_user_id, name='%'):
+    #r_ids = apps2repository(app_ids)
+    user = read('deploy.host.user', user_id, ['name','login','home'])
+    ROOT=user['home']
+
+    ROOT=os.path.join(ROOT, opt.subdir)
+    if not os.path.isdir(ROOT):
+        os.makedirs(ROOT) #create if it does not exist
+
+    for app_id in app_ids:
+        arg=[('application_id','in',[app_id]),('user_id','=',user_id),('pg_user_id','=',pg_user_id),
+             ('name','ilike',name)]
+        val={'application_id':app_id,
+             'pg_user_id':pg_user_id,
+             'user_id':user_id,
+        }
+        update_one('deploy.deploy',arg, val)
+
+        deploy_ids = search('deploy.deploy',arg)
+        for d_id in deploy_ids:
+            d=read('deploy.deploy', d_id, ['odoo_config','clone_ids'])
+            clone_ids = d['clone_ids']
+        
+            c_id,server_path=get_server(clone_ids)
+            print server_path
+            c=d['odoo_config']
+            if os.path.isfile(c):
+                validated_config_file = c
+            else:
+                validated_config_file = ''
+            if server_path and os.path.isdir(server_path):
+                validated_server_path = server_path
+            else:
+                validated_server_path = ''
+            val={'application_id':app_id,
+                 'pg_user_id':pg_user_id,
+                 'user_id':user_id,
+                 'validated_config_file': validated_config_file,
+                 'validated_server_path': validated_server_path,
+                 'validated_root':ROOT,
+             }
+            update_one('deploy.deploy',arg, val)
+
+def parse(sys_args):
     
     import getpass
     current_login=getpass.getuser()
-    if ROOT is None:
-        ROOT=os.environ['HOME']
+    #if ROOT is None:
+    #    ROOT=os.environ['HOME']
     if 'PASS' in os.environ:
         PASS=os.environ['PASS']
     else:
         PASS=None
-    if USER is None:
-        USER=current_login
-    if GROUP is None:
-        import grp,pwd
-        GROUP=pwd.getpwnam(current_login).pw_name
+    #if USER is None:
+    USER=current_login
+    #if GROUP is None:
+    #    import grp,pwd
+    GROUP=pwd.getpwnam(current_login).pw_name
+    if PASS:
+        key=PASS
+    else:
+        key=getpass.getpass()
+
     hostname=socket.gethostname()
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
     usage += "  Commands: %s \n" % (','.join(exit_commands) )
     parser = optparse.OptionParser(version='0.1', usage=usage)
 
     group = optparse.OptionGroup(parser, "Login")
-    #site[site_name]={}
-    #site[site_name]['server_dest']="server_%s"%site_name
-    group.add_option("--account",
-                     dest='account',
-                     help="Default: [%default]",
-                     #default='http://golive-ontime.co.uk:8066/'
-                     default='jan'
-                     )
+
     group.add_option("--api-url",
                      dest='apiurl',
                      help="Default: [%default]",
@@ -778,36 +833,30 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
     global sock
     global opt
     opt, args = parser.parse_args(sys_args)
-
-    cmds, dbs = split_args(args)
-
     sock_common = xmlrpclib.ServerProxy (opt.apiurl+'xmlrpc/common')
-
     uid = sock_common.login(opt.dbname, opt.login,opt.passwd)
     sock = xmlrpclib.ServerProxy(opt.apiurl+'xmlrpc/object')
     user_id,host_id=get_user_id(USER, hostname)
+    application_ids=search('deploy.application',[])
 
-    if 1: #repo
-        git_ids=git_search()
-        bzr_ids=bzr_search()
-        clone_ids=git_ids+bzr_ids
-    if args and args[0] in ['render','pg', 'run','password']:
-        if PASS:
-            key=PASS
-        else:
-            key=getpass.getpass()
+    app_repository_ids = apps2repository(application_ids)
+    git_ids=git_search(app_repository_ids)
+    bzr_ids=bzr_search(app_repository_ids)
+
         
     if len(args)==1:
         cmd=args[0]
         if cmd=='clone':
             git_clone(git_ids)
             bzr_branch(bzr_ids)
+            update_repository(app_repository_ids, user_id, host_id)
         elif cmd=='status':
             git_status(git_ids)
             bzr_status(bzr_ids)
         elif cmd=='pull':
             git_pull(git_ids)
             bzr_pull(bzr_ids)
+            update_repository(app_repository_ids,user_id, host_id)
         elif cmd=='push':
             git_push(git_ids)
             bzr_push(bzr_ids)
@@ -819,10 +868,6 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
             
     elif len(args) in [2]:
         cmd,cmd2=args
-        #import simplecrypt
-        #ciphertext = encrypt('password', plaintext)
-        #plaintext = decrypt('password', ciphertext)
-        
         if cmd=='init':
             init(cmd2, user_id, host_id)
         elif cmd=='run':
@@ -855,37 +900,20 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                 print "%s/openerp-server -c %s"%( d['validated_server_path'],d['odoo_config'] )
                 #print 'Addon paths:'
                 #repository_ids = d['repository_ids']
-                #clones=read('deploy.repository.clone',repository_ids,['validated_addon_path','name',
+                #clones=read('deploy.repository',repository_ids,['validated_addon_path','name',
                 #                                                      'local_location'])
                 #for c in clones:
                 #    print c['name'], c['validated_addon_path']
             
     elif len(args)==3:
         cmd,cmd2,dbuser=args
-        if cmd=='config' and cmd2=='dir':
-            pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
-            assert len(pg_user_ids)==1
-            pg_user_id=pg_user_ids[0]
+        pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
+        assert len(pg_user_ids)==1
+        pg_user_id=pg_user_ids[0]
 
-            application_ids=search('deploy.application',[])
-            apps = read('deploy.application', application_ids, ['name','repository_ids'] )
+        if cmd=='validate' and cmd2=='config':
 
-            ROOT=os.path.join(ROOT, opt.subdir)
-            if not os.path.isdir(ROOT):
-                os.makedirs(ROOT) #create if it does not exist
-
-            for app in apps:
-                app_name=app['name']
-                app_id=app['id']
-                repository_ids=app['repository_ids']
-                #name=d['site_name']
-
-                arg=[('application_id','=',app_id),('user_id','=',user_id),('pg_user_id','=',pg_user_id)]
-                val={'application_id':app_id,
-                     'pg_user_id':pg_user_id,
-                     #'ROOT':ROOT,
-                     'user_id':user_id,
-                   }
+            update_deployments(opt,application_ids, user_id, pg_user_id, name='%')
 
         elif cmd=='config' and cmd2=='write':
             pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
@@ -939,12 +967,13 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                     options.append( ('admin_password', decrypt(key,admin_pass)) )
                     conf,ret=generate_config(repository_ids,options)
                     conf.write(cf)
+
                     for c_id,addon_path in ret:
                         arg=[('remote_id','=',c_id),('local_user_id','=',user_id)]
                         val={'remote_id':c_id,
                              'local_user_id':user_id, 
                              'validated_addon_path':addon_path}
-                        update_one('deploy.repository.clone',arg, val )
+                        update_one('deploy.repository',arg, val )
 
                     c_id,server_path=get_server(repository_ids)
                     arg=[('application_id','=',app_id),('user_id','=',user_id)]
@@ -956,188 +985,5 @@ def parse(sys_args,USER=None, GROUP=None, ROOT=None):
                     update_one('deploy.deploy',arg, val)
 
     return
-    for site in sites:
-        if site['hostname']==socket.gethostname()  and current_login==site['login']:
-            LP=site['sw']['LP']
-            GIT=site['sw']['GIT']
-            OPTIONS=site['options']
-            ServerName=site['ServerName']
-            ServerAlias=site.get('ServerAlias',False)
-            site_name=site['site_name']
-            if not ServerName:
-                ServerName=name
-            name=hostname+'_'+site_name
-            prod_config=os.path.join(ROOT, 'server7%s.conf'%name)
-            git_addons=git_branch(ROOT, GIT, subdir='github', branch=False)
-            bzr_addons=bzr_branch(ROOT, LP, branch=False)
-            wsgi_fn = os.path.join(ROOT, '%s_wsgi.py'%name )
-            daemon_fn = '/etc/init.d/%s'%name
-            vhost_fn = '/etc/apache2/sites-available/%s.conf'%name
-            nvh='/etc/apache2/conf.d/namevhosts_%s' % name
-            sn='/etc/apache2/conf.d/servername'
-            generated_files = [wsgi_fn, daemon_fn, vhost_fn, nvh, prod_config]
-            wsgi_server_log_file =os.path.join(ROOT, 'server_wsgi_%s.log'%site_name)
-            conf, server_path = generate_config(bzr_addons+git_addons, prod_config , options=OPTIONS)
-            #usage += "  Current config path: %s\n" % prod_config
-            #usage += "  Current server path: %s\n" % server_path
-            #usage += "Generated files:\n  " + '\n  '.join(generated_files)
-
-            group = optparse.OptionGroup(parser, "Site [%s]"%site_name)
-            site[site_name]={}
-            site[site_name]['server_dest']="server_%s"%site_name
-            group.add_option("--server-%s"%site_name,
-                             dest=site[site_name]['server_dest'],
-                             help="Specify the OpenERP path with the openerp server module [%default]",
-                             default=server_path
-                             )
-            site[site_name]['config_dest']="config_%s"%site_name
-            group.add_option("--config-%s"%site_name,
-                             dest=site[site_name]['config_dest'],
-                             help="Specify OpenERP Config file [%default]",
-                             default=prod_config)
-            site[site_name]['wsgi_dest']="wsgi_%s"%site_name
-            group.add_option("--wsgi-%s"%site_name,
-                             dest=site[site_name]['wsgi_dest'],
-                             help="Wsgi file [%default]",
-                             default=wsgi_fn)
-            site[site_name]['daemon_dest']="daemon_%s"%site_name
-            group.add_option("--daemon-%s"%site_name,
-                             dest=site[site_name]['daemon_dest'],
-                             help="Daemon file [%default]",
-                             default=daemon_fn)
-            site[site_name]['vhost_dest']="vhost_%s"%site_name
-            group.add_option("--vhost-%s"%site_name,
-                             dest=site[site_name]['vhost_dest'],
-                             help="VHOST file [%default]",
-                             default=vhost_fn)
-            site[site_name]['nvh_dest']="nvh_%s"%site_name
-            group.add_option("--nvh-%s"%site_name,
-                             dest=site[site_name]['nvh_dest'],
-                             help="vnh file [%default]",
-                             default=nvh)       
-            parser.add_option_group(group)
-    nvh={}
-    #print opt.__dict__
-    config=[]
-    for site in sites:
-        if site['hostname']==socket.gethostname() and current_login==site['login']:
-            import pprint
-            LP=site['sw']['LP']
-            GIT=site['sw']['GIT']
-            IP=site['IP']
-            OPTIONS=site['options']
-            PORT=site['PORT']
-            SSLCertificateFile=site['SSLCertificateFile']
-            SSLCertificateKeyFile=site['SSLCertificateKeyFile']
-            SSLCACertificateFile=site.get('SSLCACertificateFile')
-            Redirect=site.get('Redirect')
-            ProxyPass=site.get('ProxyPass')
-            ssl=site['ssl']      
-            ServerName=site['ServerName']
-            site_name=site['site_name']
-            if site['vhost']:
-                v=nvh.setdefault( (IP,PORT), [] )
-                v.append(site_name)
-            wsgi_server_log_file =os.path.join(ROOT, 'server_wsgi_%s.log'%site_name)
-
-            for dest in ['server_dest','config_dest','wsgi_dest','daemon_dest','vhost_dest','nvh_dest']:
-                site_dest=site[site_name][dest]
-                fn=opt.__dict__[site_dest]
-                #print fn
-                site[site_name][dest]=fn
-            if site['parse_config']:
-                config.append(site[site_name]['config_dest'])
-                sys.path.append(site[site_name]['server_dest'])
-            for command in cmds:
-                if command=='show':
-                    for dest in ['config_dest','wsgi_dest','daemon_dest','vhost_dest']:
-                        fn=site[site_name][dest]
-                        if fn is None:
-                            fn=''
-                        print "%s %s" %(os.path.isfile(fn), fn)
-                if command=='status':
-                    git_addons=git_status(ROOT, GIT, subdir='github')
-                    bzr_addons=bzr_status(ROOT, LP)
-                if command=='push':
-                    git_addons=git_push(ROOT, GIT, subdir='github')
-                    bzr_addons=bzr_push(ROOT, LP)
-                if command=='pull':
-                    git_addons=git_pull(ROOT, GIT, subdir='github')
-                    bzr_addons=bzr_pull(ROOT, LP)
-                if command=='write':
-                    git_addons=git_branch(ROOT, GIT, subdir='github', branch=False)
-                    bzr_addons=bzr_branch(ROOT, LP, branch=False)
-                    conf, server_path = generate_config(bzr_addons+git_addons,site[site_name]['config_dest'] , options=OPTIONS)
-                    with open(site[site_name]['config_dest'], 'wb') as cf:
-                        print 'writing config: ', site[site_name]['config_dest']
-                        conf.write(cf)
-                    if site['daemon']:
-                        print 'writing daemon', site[site_name]['daemon_dest']
-                        file(site[site_name]['daemon_dest'],'wb').write( get_daemon(site[site_name]['server_dest'], site[site_name]['config_dest'], USER=USER,GROUP=GROUP,ROOT=ROOT)  )
-                        subprocess.call( ("chmod +x %s"%site[site_name]['daemon_dest']).split() )
-                    if site['vhost']:
-                        print 'writing vhost files for: ', site[site_name]
-                        file(site[site_name]['wsgi_dest'],'wb').write( get_wsgi(site[site_name]['config_dest']) )
-                        vhost = get_vhost(site_name, site[site_name]['server_dest'], ServerName, site[site_name]['wsgi_dest'] , 
-                                          IP=IP, PORT=PORT,SSLCertificateFile=SSLCertificateFile, 
-                                          SSLCertificateKeyFile=SSLCertificateKeyFile, SSLCACertificateFile=SSLCACertificateFile,
-                                          ProxyPass=ProxyPass,
-                                          Redirect=Redirect,
-                                          ssl=ssl, USER=USER,GROUP=GROUP,ROOT=ROOT)       
-                        file(site[site_name]['vhost_dest'],'wb').write( vhost )
-
-                    #for fn in generated_files:
-                    #    print 50*'_'  ,fn, 50*'_'
-                    #    print file(fn).read()
-                    #sys.exit(0)
-                if command=='branch':
-                    git_addons=git_branch(ROOT, GIT, subdir='github', branch=True)
-                    bzr_addons=bzr_branch(ROOT, LP, branch=True)
-                    #conf, server_path = generate_config(bzr_addons+git_addons,site[site_name]['config_dest'] , options=OPTIONS)
-                if command=='db':
-                    create_or_update_db_user(OPTIONS)
-                if command=='unlink':
-                    for fn in [site[site_name]['wsgi_dest'], site[site_name]['daemon_dest'], site[site_name]['vhost_dest'], site[site_name]['nvh_dest'], site[site_name]['config_dest']]:
-                        try:
-                            os.unlink(fn)
-                            print 'Removed: ', fn
-                        except:
-                            print 'can not unlink ', fn
-                #print command,exit_commands
-    #print 'nvh: ',nvh
-    for command in cmds:
-        if command == 'write':
-            k_out=''
-            for k,v in nvh.items():
-                k_out+='NameVirtualHost %s:%s\n'%k
-            if nvh:
-                print 'Updating', sn
-                file(sn, 'wb').write('ServerName %s\n'%socket.gethostname())
-                nvh='/etc/apache2/conf.d/namevhosts'
-                print 'Updating', nvh
-                file(nvh, 'wb').write(k_out)
-
-    if set(exit_commands).intersection(cmds):
-        sys.exit(0)
-    if len(config)==1:
-        return opt,args,parser,cmds,dbs,config[0]
-    else:
-        #assert len(config)==1
-        if config:
-            print "There are multiple config files for your host available: "
-            for i,c in enumerate(config):
-                print "  %d) %s" % (i,c)
-            user=raw_input('Please select:')
-            return opt,args,parser,cmds,dbs,config[ int(user) ]
-        else:
-            print 'No config to use on your host'
-        
-    
-def get_sites():
-    import gtc_sites
-    return gtc_sites.sites
-#sudo install gtc.py /usr/local/lib/python2.7/dist-packages
-
 if __name__ == '__main__':
-    #opt,args,parser,cmds,dbs,config = parse(sys.argv[1:], get_sites() )
     parse(sys.argv[1:])
