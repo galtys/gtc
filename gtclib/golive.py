@@ -658,9 +658,16 @@ def bzr_search(app_repository_ids):
 def deploy_search():
     return 
 def get_user_id(user, hostname):
-    host_id=update_one('deploy.host', [('name','=',hostname)], {'name':hostname} )
+    GROUP=pwd.getpwnam(current_login).pw_name
+    group_id=update_one('deploy.host.group', [('name','=',GROUP)], {'name':GROUP} )
+    host_id=update_one('deploy.host', [('name','=',hostname)], {'name':hostname,
+                                                                'control':True,
+                                                                'group_id':group_id} )
+
     user_id=update_one('deploy.host.user', [('login','=',user),('host_id.name','=',hostname)],
                        {'name':user,
+                        'home':os.environ['HOME'],
+                        'group_id':group_id,
                         'host_id':host_id,
                         'login':user,} )
     return user_id,host_id            
