@@ -107,11 +107,14 @@ def search(model, domain):
 def update_one(model, arg, value):
     #print [model, arg, value]
     ret_ids = search(model, arg)
+    #print ret_ids
     if len(ret_ids)==1:
         ret = write(model, ret_ids, value)
         return ret_ids[0]
     elif len(ret_ids)==0:
+        #print '  ABOUT TO CREATE', model, value
         ret= create(model, value)
+        #print ' ret value', ret
         return ret
     else:
         raise ValueError
@@ -293,9 +296,9 @@ def init(cmd2, user_id, host_id):
             arg=eval(domain)
         else:
             arg=[]
-        #print arg
+        print arg, t,cmd2
         res_ids=search(cmd2, arg )
-
+        print res_ids
         for res_id in res_ids:
             arg=[('template_id','=',t_id),
                  ('user_id','=',user_id),
@@ -625,6 +628,7 @@ def run_sql(cs, sql):
 
 def sql_as_superuser(sql,port='5432'):
     conn_string1 = "host='%s' dbname='postgres' user='%s' port='%s'" % ('127.0.0.1', 'postgres',port)
+    #print conn_string1
     ret=run_sql(conn_string1, sql)
     if ret is None:        
         passwd=os.environ.get('PG_PASSWD')
@@ -699,9 +703,12 @@ def update_clusters(host_id,key):
              ]
             val=dict( [(x[0],x[2]) for x in arg] )
             val['port'] = int(port)
+            val['active'] = True
+
+            #print 'update_one', arg, val
             pg_id=update_one('deploy.pg.cluster',arg,val)
             for pgu in sql_as_superuser(user_list_sql,port=port):
-                print pgu
+                #print pgu
                 name,pguid,perm=pgu
                 #superuser=su=='superuser'
                 arg=[('login','=',name),
@@ -709,8 +716,8 @@ def update_clusters(host_id,key):
                 val=dict( [(x[0],x[2]) for x in arg] )
                 val['superuser']=True#superuser                
                 pg_user_id=update_one('deploy.pg.user',arg,val)
-            pg_user_ids = search('deploy.pg.user',[('cluster_id','=',pg_id)])
-            pg_users = read('deploy.pg.user',pg_user_ids,['login','password_id'])
+            #pg_user_ids = search('deploy.pg.user',[('cluster_id','=',pg_id)])
+            #pg_users = read('deploy.pg.user',pg_user_ids,['login','password_id'])
 
 def update_repository(repository_ids, user_id, host_id):
     out_ids=[]
@@ -753,7 +760,7 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name='%'):
     #r_ids = apps2repository(app_ids)
     user = read('deploy.host.user', user_id, ['name','login','home'])
     ROOT=user['home']
-
+    print 'update_deployments'
     ROOT=os.path.join(ROOT, opt.subdir)
     if not os.path.isdir(ROOT):
         os.makedirs(ROOT) #create if it does not exist
@@ -773,6 +780,7 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name='%'):
             clone_ids = d['clone_ids']
         
             c_id,server_path=get_server(clone_ids)
+            print 'server path: ', c_id, server_path
             print server_path
             c=d['odoo_config']
             if os.path.isfile(c):
