@@ -952,7 +952,7 @@ def parse(sys_args):
         if apps_str=='all':
             app_arg=[('id','in',application_ids)]
         else:
-            app_arg=[('name','in', app_str.split(',') ), ('id','in',application_ids) ]
+            app_arg=[('name','in', apps_str.split(',') ), ('id','in',application_ids) ]
         update_app_ids=search('deploy.application',app_arg)
 
         if cmd=='update' and cmd2=='deployments':
