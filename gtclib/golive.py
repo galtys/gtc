@@ -664,14 +664,27 @@ def deploy_search():
 def get_user_id(user, hostname):
     print 'get_user_id', [user,hostname]
     GROUP=pwd.getpwnam(user).pw_name
-    group_id=update_one('deploy.host.group', [('name','=',GROUP)], {'name':GROUP} )
+    ginfo=grp.getgrnam(GROUP)
+    uid=os.getuid()
+    gid=os.getgid()
+    
+    host_id=update_one('deploy.host', [('name','=',hostname)], {'name':hostname,
+                                                                'control':True} )
+    group_id=update_one('deploy.host.group', [('host_id','=',host_id), ('name','=',GROUP)], {'name':GROUP,
+                                                                                             'host_id':host_id,
+                                                                                             'gid':gid,
+                                                                                             'type':'user',
+                                                                                         } )
     host_id=update_one('deploy.host', [('name','=',hostname)], {'name':hostname,
                                                                 'control':True,
                                                                 'group_id':group_id} )
-
+    
     user_id=update_one('deploy.host.user', [('login','=',user),('host_id.name','=',hostname)],
                        {'name':user,
                         'home':os.environ['HOME'],
+                        'shell':os.environ['SHELL'],
+                        'uid':uid,
+                        'type':'user',
                         'group_id':group_id,
                         'host_id':host_id,
                         'login':user,} )
