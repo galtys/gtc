@@ -920,7 +920,9 @@ def parse(sys_args):
             arg=[('user_id','=',user_id)]
             run(arg, user_id, host_id,key)
             
-    elif len(args) in [2]:
+    elif len(args)==2:
+        def disp(a):
+            return str(a)
         cmd,cmd2=args
         if cmd=='init':
             init(cmd2, user_id, host_id)
@@ -937,6 +939,27 @@ def parse(sys_args):
             print [decrypt(key,d)]
         elif cmd=='export':
             data_export(cmd2)
+        elif cmd=='list' and cmd2=='applications':
+            apps=read('deploy.application',application_ids,['name'])
+            print apps
+        elif cmd=='list' and cmd2 =='deployments':
+            apps=read('deploy.application',application_ids,['name'])
+            print apps
+            arg=[('user_id','=',user_id)]
+            d_ids=search('deploy.deploy', arg)
+            header=['name',
+                    'site_name',
+                    'application_id',
+                    'user_id',
+                    'pg_user_id',
+                    'options_id',]
+            deployments = read('deploy.deploy',d_ids,header)
+            missing_apps=[]
+            print ' '.join(header)
+            for d in deployments:
+                print ' '.join( [ disp(d[h]) for h in header])
+
+                
         elif cmd=='config' and cmd2=='show':
             deploy_ids=search('deploy.deploy',[('user_id','=',user_id)])
             #deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
@@ -969,7 +992,7 @@ def parse(sys_args):
             app_arg=[('name','in', apps_str.split(',') ), ('id','in',application_ids) ]
         update_app_ids=search('deploy.application',app_arg)
 
-        if cmd=='update' and cmd2=='deployments':
+        if cmd=='update' and cmd2=='deployments': #
             for app_id in update_app_ids:
                 a=read('deploy.application', app_id, ['name'])
                 app_name = a['name']
