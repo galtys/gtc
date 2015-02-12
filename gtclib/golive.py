@@ -786,7 +786,7 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
     #r_ids = apps2repository(app_ids)
     user = read('deploy.host.user', user_id, ['name','login','home'])
     ROOT=user['home']
-    print 'update_deployments'
+    print 'update_deployments (validating config and server path)'
     ROOT=os.path.join(ROOT, opt.subdir)
     if not os.path.isdir(ROOT):
         os.makedirs(ROOT) #create if it does not exist
@@ -795,7 +795,7 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
         arg=[('application_id','in',[app_id]),('user_id','=',user_id),('pg_user_id','=',pg_user_id)
          ]
         if name:
-            arg = arg + ('name','=',name)
+            arg = arg + [('name','=',name)]
         #val={'application_id':app_id,
         #     'pg_user_id':pg_user_id,
         #     'user_id':user_id,
@@ -808,8 +808,8 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
             clone_ids = d['clone_ids']
         
             c_id,server_path=get_server(clone_ids)
-            print 'server path: ', c_id, server_path
-            print server_path
+
+            #print server_path
             c=d['odoo_config']
             if os.path.isfile(c):
                 validated_config_file = c
@@ -826,7 +826,13 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
                  'validated_server_path': validated_server_path,
                  'validated_root':ROOT,
              }
+            print 44*'_'
+            #print 'server path: ', c['name']
+            arg=[('id','=',d_id)]
             update_one('deploy.deploy',arg, val)
+            print arg
+            print '%s/openerp-server -c %s' %(validated_server_path, validated_config_file)
+            
 
 HELP="""
 clone ... clone git and bzr repositories that are used in all current user applications
@@ -1067,7 +1073,7 @@ def parse(sys_args):
 
         if cmd=='validate' and cmd2=='config':
 
-            update_deployments(opt,update_app_ids, user_id, pg_user_id, name='%')
+            update_deployments(opt,update_app_ids, user_id, pg_user_id, name='')
 
         elif cmd=='config' and cmd2=='write': #deprecated
             pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
