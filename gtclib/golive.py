@@ -489,7 +489,7 @@ def bzr_status(clone_ids):
             os.chdir(cwd)
 
 def git_push(clone_ids):
-    items = read('deploy.repository',clone_ids,['url','local_location_fnc','branch'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc','branch','push'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)        
@@ -498,11 +498,14 @@ def git_push(clone_ids):
         cwd=os.getcwd()
         branch=c['branch']
         if os.path.isdir(local_dir):
-            os.chdir(local_dir)
-            print 44*'_', 'git push', local_dir
-            args = ["git","push","origin", branch]
-            subprocess.call(args)
-            os.chdir(cwd)
+            #os.chdir(local_dir)
+            if c['push']:
+                print 44*'_', 'git push', local_dir
+                args = ["git","push","origin", branch]
+                subprocess.call(args)
+                os.chdir(cwd)
+            else:
+                print 44*'_', 'git push (SKIPPING)', local_dir
 def bzr_push(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     for c in items:
@@ -769,7 +772,7 @@ def apps2repository(application_ids):
                 app_repository_ids.append(ar_id)
     return app_repository_ids
     
-def update_deployments(opt,app_ids, user_id, pg_user_id, name='%'):
+def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
     #r_ids = apps2repository(app_ids)
     user = read('deploy.host.user', user_id, ['name','login','home'])
     ROOT=user['home']
@@ -779,13 +782,15 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name='%'):
         os.makedirs(ROOT) #create if it does not exist
 
     for app_id in app_ids:
-        arg=[('application_id','in',[app_id]),('user_id','=',user_id),('pg_user_id','=',pg_user_id),
-             ('name','ilike',name)]
-        val={'application_id':app_id,
-             'pg_user_id':pg_user_id,
-             'user_id':user_id,
-        }
-        update_one('deploy.deploy',arg, val)
+        arg=[('application_id','in',[app_id]),('user_id','=',user_id),('pg_user_id','=',pg_user_id)
+         ]
+        if name:
+            arg = arg + ('name','=',name)
+        #val={'application_id':app_id,
+        #     'pg_user_id':pg_user_id,
+        #     'user_id':user_id,
+        #}
+        #update_one('deploy.deploy',arg, val)
 
         deploy_ids = search('deploy.deploy',arg)
         for d_id in deploy_ids:
@@ -804,15 +809,48 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name='%'):
                 validated_server_path = server_path
             else:
                 validated_server_path = ''
-            val={'application_id':app_id,
-                 'pg_user_id':pg_user_id,
-                 'user_id':user_id,
+            val={#'application_id':app_id,
+                 #'pg_user_id':pg_user_id,
+                 #'user_id':user_id,
                  'validated_config_file': validated_config_file,
                  'validated_server_path': validated_server_path,
                  'validated_root':ROOT,
              }
             update_one('deploy.deploy',arg, val)
 
+HELP="""
+clone ... clone git and bzr repositories that are used in all current user applications
+
+pg ... uses pg_lsclusters to list clusters and updates deploy.pg.cluster 
+       uses sql_as_superuser to list pg users and updates deploy.pg.user
+
+init deploy.host (creates deploy.file records)
+
+init deploy.pg.cluster (creates deploy.file records)
+
+password update
+
+run deploy.host  (writes config file from deploy.file to target file on host)
+
+run deploy.pg.cluster (same for pg)
+
+update deployments jan all   ... updates deployments for all applications, 
+                                 sets pg_user_id=jan, application_id= to app, 
+                                 user_id=to current user
+                                 name, site_name and mode to dev
+
+init deploy.deploy ... will create deploy.file records for new deploy.deploy records
+
+password update 
+
+run deploy.deploy .... will generate config files and daemon files
+
+validate config jan all .... will use get_server function, will use 
+                             odoo_config to validate config file existence. 
+                             Will update validate_root with ROOT.                               
+
+
+"""
 def parse(sys_args):
     
     import getpass
@@ -898,8 +936,9 @@ def parse(sys_args):
     git_ids=git_search(local_r_ids)
     bzr_ids=bzr_search(local_r_ids)
 
-
-    if len(args)==1:
+    if len(args)==0:
+        print HELP
+    elif len(args)==1:
         cmd=args[0]
         if cmd=='clone':
             git_clone(git_ids)
