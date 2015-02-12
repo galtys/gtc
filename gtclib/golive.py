@@ -489,7 +489,8 @@ def bzr_status(clone_ids):
             os.chdir(cwd)
 
 def git_push(clone_ids):
-    items = read('deploy.repository',clone_ids,['url','local_location_fnc','branch','push'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc','branch',
+                                                'push','remote_name'] )
     for c in items:
         #print c['mkdir']
         local_dir=get_local_dir(c)        
@@ -497,11 +498,14 @@ def git_push(clone_ids):
         #local_dir, p, addon_path = git_remote2local(ROOT,xxx,subdir=subdir)
         cwd=os.getcwd()
         branch=c['branch']
+        remote_name = c['remote_name']
+        #print c
         if os.path.isdir(local_dir):
-            #os.chdir(local_dir)
+            os.chdir(local_dir)
             if c['push']:
-                print 44*'_', 'git push', local_dir
-                args = ["git","push","origin", branch]
+                args = ["git","push",remote_name, branch]
+                print 44*'_', 'git push', local_dir, args
+                #print '  ',args
                 subprocess.call(args)
                 os.chdir(cwd)
             else:
@@ -741,6 +745,9 @@ def update_repository(repository_ids, user_id, host_id):
         c=read('deploy.repository',c_id,['use','type','name','branch',
                                          'addon_subdir',
                                          'is_module_path',
+                                         'delete',
+                                         'push',
+                                         'pull',
                                          'remote_name'])
         arg=[('remote_id','=',c_id),('local_user_id','=',user_id)]
         val={'remote_id':c_id,
@@ -749,6 +756,9 @@ def update_repository(repository_ids, user_id, host_id):
              'is_module_path':c['is_module_path'],
              'remote_name':c['remote_name'],
              'use':c['use'],
+             'push':c['push'],
+             'pull':c['pull'],
+             'delete':c['delete'],
              'branch':c['branch'],
              'type':c['type'],
              'host_id':host_id}
@@ -921,13 +931,13 @@ def parse(sys_args):
     application_ids=user_apps['app_ids']#search('deploy.application',[])
 
     app_repository_ids = apps2repository(application_ids)
+
     update_repository(app_repository_ids, user_id, host_id)
     arg=[('local_user_id','=',user_id),
          ('use','in',['server','addon']),
          ('remote_id','in',app_repository_ids)]
     local_r_ids = search('deploy.repository',arg)
     validate_addon_path(local_r_ids)
-
 
     arg=[('local_user_id','=',user_id),
          ('remote_id','in',app_repository_ids)]
