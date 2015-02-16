@@ -51,8 +51,12 @@ def sudo_chown(fn,user,group,options=''): #-R
     arg=["sudo","chown","%s:%s"%(user,group),fn]+o 
     ret=subprocess.call(arg)
     return ret
-def sudo_mv(src, dst):
-    arg=["sudo","mv",src,dst]
+#def sudo_mv(src, dst):
+#    arg=["sudo","mv",src,dst]
+#    ret=subprocess.call(arg)
+#    return ret
+def sudo_cp(src, dst):
+    arg=["sudo","cp",src,dst]
     ret=subprocess.call(arg)
     return ret
 
@@ -64,29 +68,39 @@ def run_chmod(fn, chmod):
 
 #import tempfile
 #import shutil
-def write_file(fn,c,user,group,chmod):
+def write_file(fn,c,user,group,chmod, user_id):
     current_login=getpass.getuser()
     USER=current_login
     GROUP=pwd.getpwnam(current_login).pw_name
+    u=read('deploy.host.user', user_id, ['validated_root'])
+    validated_root=u['validated_root']
+    
     #temp_fp = tempfile.TemporaryFile(mode='wb')
     #temp_fp.write(c)
     #temp_fp.close(
+    if user == 'root':
+        tmp=validated_root+fn #os.path.join(validated_root, fn)
+        tmp_path,tmp_fn = os.path.split(tmp)
+        if not os.path.isdir(tmp_path):
+            os.makedirs(tmp_path)
+        #if DEBUG:
+        #    print "Writing to tmpfile: ", tmp
+        fp=open(tmp,'wb')
+        fp.write(c)
+        fp.close()
+        #sudo_chown(tmp, user, group)
+        if DEBUG:
+            print "Copy to destination : ", [tmp, fn]
+        sudo_cp(tmp, fn)
+        sudo_chown(fn, user, group)
 
-    tmp='tmp_buff'
-    #if DEBUG:
-    #    print "Writing to tmpfile: ", tmp
-    fp=open(tmp,'wb')
-    fp.write(c)
-    fp.close()
-    sudo_chown(tmp, user, group)
-    if DEBUG:
-        print "Moving to destination : ", fn
-    sudo_mv(tmp, fn)
-    sudo_chown(fn, user, group)
-
-    if chmod:
-        run_chmod(fn,chmod)
-
+        if chmod:
+            run_chmod(fn,chmod)
+    else:
+        fp=open(fn,'wb')
+        fp.write(c)
+        fp.close()
+        print 'File writen to: ', fn
 
 def read(model,ids,fnames):
 #    return sock.execute(dbname, uid, 'g77', 'deploy.repository', 'read',  clone_ids,['git_clone','mkdir'])
@@ -148,28 +162,6 @@ def render_pass(content, pass_map,key):
             p=decrypt(key,p64)
             content=content.replace(tag,p)
     return content
-
-def render(key):
-    host_ids=search('deploy.host',DOMAIN)
-    #print 'host ids', host_ids
-    #host_explore(host_ids)
-
-    ret=sock.execute(opt.dbname, uid, opt.passwd, 'deploy.host','render',host_ids, {'hostname':hostname})
-    pass_ids=search('deploy.password',[] )
-    pass_map=read('deploy.password', pass_ids,['pass_tag','password'] )
-    #print len(ret[0])
-    #h,model,t_id,r_id,out_file,content,user,group,_type,name,python_function,subprocess_arg,chmod,sequence
-    for h,model,t_id,r_id,out_file,content,user,group,_type,name,python_function,subprocess_arg,chmod,sequence in ret:
-        content=render_pass(content, pass_map,key)
-        if _type=='template':
-            write_file(out_file,content,user,group,chmod)
-        elif _type=='python' and model=='deploy.host':
-            my_code=compile(content, 'mypy', "exec")
-            #print 'executing python code', [t_id,r_id,python_function]            
-            exec my_code
-            ret=eval(python_function)
-        elif _type=='bash' and model=='deploy.host':            
-            run_bash(t_id,r_id,name,content,subprocess_arg)
 
 def password(cmd2,key):
     field_ids = search('ir.model.fields', [('relation','=','deploy.password')])
@@ -253,7 +245,7 @@ def run(arg, user_id, host_id, key):
             chmod=t['chmod']
             user=f['user']
             group=f['group']
-            write_file(file_generated, content,user,group,chmod)
+            write_file(file_generated, content,user,group,chmod, user_id)
             val={'file_written':file_generated,
                  'command':'run',
                  'content_written':content_generated}
@@ -668,7 +660,7 @@ def bzr_search(app_repository_ids):
     return ret #host_filter(ret)
 def deploy_search():
     return 
-def get_user_id(user, hostname):
+def get_user_id(user, hostname, opt):
     print 'get_user_id', [user,hostname]
     GROUP=pwd.getpwnam(user).pw_name
     ginfo=grp.getgrnam(GROUP)
@@ -685,16 +677,18 @@ def get_user_id(user, hostname):
     host_id=update_one('deploy.host', [('name','=',hostname)], {'name':hostname,
                                                                 'control':True,
                                                                 'group_id':group_id} )
-    
+    val={'name':user,
+         'home':os.environ['HOME'],
+         'shell':os.environ['SHELL'],
+         'uid':uid,
+         'validated_root': os.path.join( os.environ['HOME'], opt.subdir ),
+         'type':'user',
+         'group_id':group_id,
+         'host_id':host_id,
+         'login':user,}
+    #print val
     user_id=update_one('deploy.host.user', [('login','=',user),('host_id.name','=',hostname)],
-                       {'name':user,
-                        'home':os.environ['HOME'],
-                        'shell':os.environ['SHELL'],
-                        'uid':uid,
-                        'type':'user',
-                        'group_id':group_id,
-                        'host_id':host_id,
-                        'login':user,} )
+                       val )
     return user_id,host_id            
 
 def generate_password():
@@ -824,7 +818,7 @@ def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
                  #'user_id':user_id,
                  'validated_config_file': validated_config_file,
                  'validated_server_path': validated_server_path,
-                 'validated_root':ROOT,
+                #'validated_root':ROOT,
              }
             print 44*'_'
             #print 'server path: ', c['name']
@@ -930,7 +924,7 @@ def parse(sys_args):
     sock_common = xmlrpclib.ServerProxy (opt.apiurl+'xmlrpc/common')
     uid = sock_common.login(opt.dbname, opt.login,opt.passwd)
     sock = xmlrpclib.ServerProxy(opt.apiurl+'xmlrpc/object')
-    user_id,host_id=get_user_id(USER, hostname)
+    user_id,host_id=get_user_id(USER, hostname, opt)
 
     user_apps=read('deploy.host.user',user_id, ['app_ids'])
 
@@ -1141,7 +1135,8 @@ def parse(sys_args):
                          'user_id':user_id,
                          'validated_config_file':prod_config,
                          'validated_server_path':server_path,
-                         'validated_root':ROOT}
+                    #     'validated_root':ROOT,
+                    }
                     update_one('deploy.deploy',arg, val)
 
     return
