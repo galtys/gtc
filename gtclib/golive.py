@@ -904,7 +904,7 @@ def parse(sys_args):
     group.add_option("--pass",
                      dest='passwd',
                      help="Default: [%default]",
-                     default='admin'
+                     default='admin77'
                      )
     group.add_option("--dbname",
                      dest='dbname',
