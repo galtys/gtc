@@ -78,7 +78,8 @@ def write_file(fn,c,user,group,chmod, user_id):
     #temp_fp = tempfile.TemporaryFile(mode='wb')
     #temp_fp.write(c)
     #temp_fp.close(
-    if user == 'root':
+    print [user]
+    if user in ['root', 'postgres']:
         tmp=validated_root+fn #os.path.join(validated_root, fn)
         tmp_path,tmp_fn = os.path.split(tmp)
         if not os.path.isdir(tmp_path):
