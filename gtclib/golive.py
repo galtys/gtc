@@ -353,16 +353,18 @@ def get_parent_dir(path):
     return p
     
 def get_addons(clone_ids):
-    items = read('deploy.repository',clone_ids,['url','local_location_fnc','addon_subdir','is_module_path'] )
+    items = read('deploy.repository',clone_ids,['url','local_location_fnc','addon_subdir','is_module_path','use'] )
     addons_path=[]
-    for c in items:
+    for c in [x for x in items if x['use']=='addon']:
         a=get_local_dir(c) 
         to_append=False
         path=a
-
+        modules = []
         if c['is_module_path']:
             to_append=get_parent_dir(a)
-            modules=[x for x in os.listdir(path) if is_module(x)  ]
+            #modules=[x for x in os.listdir(path) if is_module(x)  ]
+            if os.path.isdir(path):
+                modules=[x for x in os.listdir(path) if is_module(os.path.join(path,x)  )]
         elif os.path.isdir(a):
             web=os.path.join(a, 'addons/web')
             add=os.path.join(a, 'addons')
@@ -379,10 +381,29 @@ def get_addons(clone_ids):
 
             else:
                 to_append=a
-            modules=[x for x in os.listdir(to_append) if is_module(x)  ]
+            if os.path.isdir(to_append):
+                modules=[x for x in os.listdir(to_append) if is_module(os.path.join(to_append,x)  )]
+#        else:
 
         addons_path.append( (c['id'],to_append, path,modules) )
     return addons_path
+def list_modules(user_id, host_id, name):
+    arg=[('user_id','=',user_id),
+         ('name','=', name)]
+    d_ids = search('deploy.deploy',arg)
+    assert len(d_ids)==1
+    d_id=d_ids[0]
+    d=read('deploy.deploy',d_id,['name','clone_ids'])
+    return get_addons( d['clone_ids'] )
+    #local_repos=read('deploy.repository', d['clone_ids'], ['remote_id','validated_addon_path','addon_subdir','is_module_path','use'])
+    #for r in [x for x in local_repos if x['use']=='addon']:
+    #    print 44*'_', r['remote_id']
+     #   path=r['validated_addon_path']
+      #  subdir=r['addon_subdir']
+       # is_module=r['is_module_path']
+        #if is_module:
+         #   pass
+
 def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
     c=ConfigParser.RawConfigParser()
     cfn=os.path.join(fn)
@@ -1050,20 +1071,8 @@ def parse(sys_args):
     elif len(args)==3:
         cmd,cmd2,name=args
         if cmd=='list' and cmd2 =='modules':
-            arg=[('user_id','=',user_id),
-                 ('name','=', name)]
-            d_ids = search('deploy.deploy',arg)
-            assert len(d_ids)==1
-            d_id=d_ids[0]
-            d=read('deploy.deploy',d_id,['name','clone_ids'])
-            local_repos=read('deploy.repository', d['clone_ids'], ['remote_id','validated_addon_path','addon_subdir','is_module_path','use'])
-            for r in [x for x in local_repos if x['use']=='addon']:
-                print 44*'_', r['remote_id']
-                path=r['validated_addon_path']
-                subdir=r['addon_subdir']
-                is_module=r['is_module_path']
-                if is_module:
-                    pass
+            ret = list_modules(user_id, host_id)
+            print ret
     elif len(args)==4:
         cmd,cmd2,dbuser,apps_str=args
         pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
