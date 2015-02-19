@@ -325,9 +325,9 @@ def is_module(p):
                 if os.path.isfile(t):
                     ret=True
     return ret
-def get_local_dir(item):
-    l=item['local_location_fnc']
-    return l
+
+def get_local_dir(c):
+    return c['local_location_fnc']
 
 def get_server(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
@@ -358,8 +358,11 @@ def get_addons(clone_ids):
     for c in items:
         a=get_local_dir(c) 
         to_append=False
+        path=a
+
         if c['is_module_path']:
             to_append=get_parent_dir(a)
+            modules=[x for x in os.listdir(path) if is_module(x)  ]
         elif os.path.isdir(a):
             web=os.path.join(a, 'addons/web')
             add=os.path.join(a, 'addons')
@@ -369,14 +372,16 @@ def get_addons(clone_ids):
                 add2=''
                 
             if os.path.isdir(web) or os.path.isdir(add):
-                to_append=os.path.join(a,'addons')
+                to_append=add#os.path.join(a,'addons')
 
             elif os.path.isdir(add2):
                 to_append=add2
 
             else:
                 to_append=a
-        addons_path.append( (c['id'],to_append) )
+            modules=[x for x in os.listdir(to_append) if is_module(x)  ]
+
+        addons_path.append( (c['id'],to_append, path,modules) )
     return addons_path
 def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
     c=ConfigParser.RawConfigParser()
@@ -389,11 +394,11 @@ def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
     if logfile is not None:
         c.set('options', 'logfile', logfile)
     return c
-def generate_config(clone_ids,options, fn=None, logfile=None):
-    ret=get_addons(clone_ids)
-    addons=[x[1] for x in ret if x[1]]
-    c=create_odoo_config(options,addons,fn=fn,logfile=logfile)
-    return c,ret
+#def generate_config(clone_ids,options, fn=None, logfile=None):
+#    ret=get_addons(clone_ids)
+#    addons=[x[1] for x in ret if x[1]]
+#    c=create_odoo_config(options,addons,fn=fn,logfile=logfile)
+#    return c,ret
 
 def bzr_pull(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
@@ -762,7 +767,7 @@ def update_repository(repository_ids, user_id, host_id):
     return out_ids
 def validate_addon_path(repository_ids):
     ret=get_addons(repository_ids)
-    for c_id, addon_path in ret:
+    for c_id, addon_path,path,modules in ret:
         arg=[('id','=',c_id)]
         val={'validated_addon_path':addon_path}
         #print val
@@ -862,32 +867,9 @@ validate config jan all .... will use get_server function, will use
 
 
 """
-def parse(sys_args):
-    
-    import getpass
-    current_login=getpass.getuser()
-    #if ROOT is None:
-    #    ROOT=os.environ['HOME']
-    if 'PASS' in os.environ:
-        PASS=os.environ['PASS']
-    else:
-        PASS=None
-    #if USER is None:
-    USER=current_login
-    #if GROUP is None:
-    #    import grp,pwd
-    GROUP=pwd.getpwnam(current_login).pw_name
-    if PASS:
-        key=PASS
-    else:
-        key=getpass.getpass()
 
-    hostname=socket.gethostname()
-    usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
-    usage += "  Commands: %s \n" % (','.join(exit_commands) )
-    parser = optparse.OptionParser(version='0.1', usage=usage)
-
-    group = optparse.OptionGroup(parser, "Login")
+def get_deploy_options_group(parser):
+    group = optparse.OptionGroup(parser, "DeployLogin")
 
     group.add_option("--api-url",
                      dest='apiurl',
@@ -916,19 +898,52 @@ def parse(sys_args):
                      help="Default: [%default]",
                      default='projects'
                      )
+    return group
 
-    parser.add_option_group(group)
+def get_env(main_opt=None):
     global uid
     global sock
     global opt
-    opt, args = parser.parse_args(sys_args)
+    if main_opt:
+        opt=main_opt
+        print opt.apiurl
+    import getpass
+    current_login=getpass.getuser()
+    USER=current_login
+    GROUP=pwd.getpwnam(current_login).pw_name
+    hostname=socket.gethostname()
+
     sock_common = xmlrpclib.ServerProxy (opt.apiurl+'xmlrpc/common')
     uid = sock_common.login(opt.dbname, opt.login,opt.passwd)
     sock = xmlrpclib.ServerProxy(opt.apiurl+'xmlrpc/object')
     user_id,host_id=get_user_id(USER, hostname, opt)
+    return user_id, host_id
+
+def parse(sys_args):
+    global opt
+    
+    if 'PASS' in os.environ:
+        PASS=os.environ['PASS']
+    else:
+        PASS=None
+    if PASS:
+        key=PASS
+    else:
+        key=getpass.getpass()
+
+    usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
+    usage += "  Commands: %s \n" % (','.join(exit_commands) )
+
+    parser = optparse.OptionParser(version='0.1', usage=usage)
+    deploy_group=get_deploy_options_group(parser)
+    parser.add_option_group(deploy_group)
+    opt, args = parser.parse_args(sys_args)
+
+    
+    user_id,host_id=get_env(opt)
+
 
     user_apps=read('deploy.host.user',user_id, ['app_ids'])
-
     application_ids=user_apps['app_ids']#search('deploy.application',[])
 
     app_repository_ids = apps2repository(application_ids)
@@ -1009,6 +1024,7 @@ def parse(sys_args):
             for d in deployments:
                 print ' '.join( [ disp(d[h]) for h in header])
 
+
                 
         elif cmd=='config' and cmd2=='show':
             deploy_ids=search('deploy.deploy',[('user_id','=',user_id)])
@@ -1031,6 +1047,23 @@ def parse(sys_args):
                 #                                                      'local_location'])
                 #for c in clones:
                 #    print c['name'], c['validated_addon_path']
+    elif len(args)==3:
+        cmd,cmd2,name=args
+        if cmd=='list' and cmd2 =='modules':
+            arg=[('user_id','=',user_id),
+                 ('name','=', name)]
+            d_ids = search('deploy.deploy',arg)
+            assert len(d_ids)==1
+            d_id=d_ids[0]
+            d=read('deploy.deploy',d_id,['name','clone_ids'])
+            local_repos=read('deploy.repository', d['clone_ids'], ['remote_id','validated_addon_path','addon_subdir','is_module_path','use'])
+            for r in [x for x in local_repos if x['use']=='addon']:
+                print 44*'_', r['remote_id']
+                path=r['validated_addon_path']
+                subdir=r['addon_subdir']
+                is_module=r['is_module_path']
+                if is_module:
+                    pass
     elif len(args)==4:
         cmd,cmd2,dbuser,apps_str=args
         pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
