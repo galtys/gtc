@@ -60,8 +60,13 @@ def sudo_cp(src, dst):
     ret=subprocess.call(arg)
     return ret
 
-def run_chmod(fn, chmod):
+def sudo_chmod(fn, chmod):
     arg=["sudo","chmod",chmod,fn]
+    if DEBUG:
+        print arg
+    subprocess.call(arg)
+def run_chmod(fn, chmod):
+    arg=["chmod",chmod,fn]
     if DEBUG:
         print arg
     subprocess.call(arg)
@@ -96,11 +101,16 @@ def write_file(fn,c,user,group,chmod, user_id):
         sudo_chown(fn, user, group)
 
         if chmod:
-            run_chmod(fn,chmod)
+            sudo_chmod(fn,chmod)
     else:
+        tmp_path,tmp_fn = os.path.split(fn)
+        if not os.path.isdir(tmp_path):
+            os.makedirs(tmp_path)
         fp=open(fn,'wb')
         fp.write(c)
         fp.close()
+        if chmod:
+            run_chmod(fn,chmod)
         print 'File writen to: ', fn
 
 def read(model,ids,fnames):
