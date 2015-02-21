@@ -170,6 +170,7 @@ def render_pass(content, pass_map,key):
         if tag in content:
             #print r
             p64=base64.decodestring( r['password'] )
+            print tag
             p=decrypt(key,p64)
             content=content.replace(tag,p)
     return content
