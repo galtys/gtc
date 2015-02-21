@@ -77,9 +77,9 @@ def write_file(fn,c,user,group,chmod, user_id):
     current_login=getpass.getuser()
     USER=current_login
     GROUP=pwd.getpwnam(current_login).pw_name
-    u=read('deploy.host.user', user_id, ['validated_root'])
+    u=read('deploy.host.user', user_id, ['validated_root','sudo_x'])
     validated_root=u['validated_root']
-    
+    sudo_x=u['sudo_x']
     #temp_fp = tempfile.TemporaryFile(mode='wb')
     #temp_fp.write(c)
     #temp_fp.close(
@@ -97,11 +97,13 @@ def write_file(fn,c,user,group,chmod, user_id):
         #sudo_chown(tmp, user, group)
         if DEBUG:
             print "Copy to destination : ", [tmp, fn]
-        sudo_cp(tmp, fn)
-        sudo_chown(fn, user, group)
+        if sudo_x:
+            sudo_cp(tmp, fn)
+            sudo_chown(fn, user, group)
 
         if chmod:
-            sudo_chmod(fn,chmod)
+            if sudo_x:
+                sudo_chmod(fn,chmod)
     else:
         tmp_path,tmp_fn = os.path.split(fn)
         if not os.path.isdir(tmp_path):
