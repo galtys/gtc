@@ -702,12 +702,12 @@ def deploy_search():
     return 
 
 def read_server_path_and_config_file(user_id, name):
-    d_ids = golive.search('deploy.deploy', [('user_id','=', user_id),
+    d_ids = search('deploy.deploy', [('user_id','=', user_id),
                                             ('name', '=', 'cellpak8')] )
     assert len(d_ids)==1
     d_id = d_ids[0]
 
-    d = golive.read('deploy.deploy', d_id, ['validated_server_path',
+    d = read('deploy.deploy', d_id, ['validated_server_path',
                                             'validated_config_file'] )
     return d['validated_server_path'], d['validated_config_file']
 
