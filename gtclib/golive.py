@@ -574,6 +574,45 @@ def git_pull(clone_ids):
 def get_wsgi(prod_config):
     return WSGI_SCRIPT % (prod_config)
 
+VHOST="""<VirtualHost ${IP}:${PORT}>
+        ServerName ${ServerName}
+        %if ServerAlias:
+            ServerAlias ${ServerAlias}
+        %endif
+        %if ssl:
+           SSLEngine on
+           SSLCertificateFile ${SSLCertificateFile}
+           SSLCertificateKeyFile ${SSLCertificateKeyFile}
+        %endif
+        %if SSLCACertificateFile:
+           SSLCACertificateFile ${SSLCACertificateFile}
+        %endif
+        %if ProxPass:
+            ProxyPass / ${ProxyPass}
+            ProxyPassReverse / ${ProxyPass}
+        %elif Redirect:
+            #Redirect permanent / https://secure.example.com/
+            Redirect / ${Redirect}
+        %else:
+        <%
+          apache_log_dir="${APACHE_LOG_DIR}"
+        %>
+        WSGIScriptAlias / ${WSGIScriptAlias}
+        WSGIDaemonProcess ${name} user=${user} group=${group} processes=${processes} python-path=${python_path} display-name=${name}
+        WSGIProcessGroup ${name}
+        <Directory ${python_path}>
+            Order allow,deny
+            Allow from all
+        </Directory>
+        ErrorLog ${apache_log_dir}/openerp-${name}-error.log
+        # Possible values include: debug, info, notice, warn, error, crit,                                                                                                                                         
+        # alert, emerg.                                                                                                                                                                                            
+        LogLevel debug
+        CustomLog ${apache_log_dir}/openerp-${name}.log combined
+
+        %endif
+</VirtualHost>
+"""
 
 def get_vhost(name, python_path, ServerName, WSGIScriptAlias, IP=None, PORT=None, processes=2, SSLCertificateFile=None, 
               SSLCertificateKeyFile=None, 
@@ -911,38 +950,63 @@ validate config jan all .... will use get_server function, will use
                              odoo_config to validate config file existence. 
                              Will update validate_root with ROOT.                               
 
-
+config file: ~/.golive.conf
+Example:
+[deploy_server]
+apiurl=http://localhost:10069/
+login=admin
+passwd=admin77
+dbname=deploy
+[user_options]
+subdir=projects
 """
 
 def get_deploy_options_group(parser):
     group = optparse.OptionGroup(parser, "DeployLogin")
-
+    HOME=os.environ['HOME']
+    cfg_fn=os.path.join(HOME,'.golive.conf')
+    if os.path.isfile(cfg_fn):
+        c = ConfigParser.ConfigParser()
+        ret = c.read( [cfg_fn] )
+        print c.sections()
+        apiurl=c.get('deploy_server','apiurl')
+        login= c.get('deploy_server','login')
+        passwd=c.get('deploy_server','passwd')
+        dbname=c.get('deploy_server','dbname')
+        subdir=c.get('user_options','subdir')
+    else:
+        apiurl='http://localhost:10069/'
+        login='admin'
+        passwd='admin77'
+        dbname='deploy'
+        subdir='projects'
+    
     group.add_option("--api-url",
                      dest='apiurl',
                      help="Default: [%default]",
                      #default='http://golive-ontime.co.uk:8066/'
                      #default='http://galtys.com:10069/'
-                     default='http://localhost:10069/'
+                     default=apiurl
                      )
     group.add_option("--login",
                      dest='login',
                      help="Default: [%default]",
-                     default='admin'
+                     default=login
                      )
     group.add_option("--pass",
                      dest='passwd',
                      help="Default: [%default]",
-                     default='admin77'
+                     default=passwd
                      )
     group.add_option("--dbname",
                      dest='dbname',
                      help="Default: [%default]",
-                     default='deploy'
+                     default=dbname
                      )
     group.add_option("--subdir",
                      dest='subdir',
                      help="Default: [%default]",
-                     default='projects'
+                     default=subdir
                      )
     return group
 
