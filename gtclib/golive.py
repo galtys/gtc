@@ -368,7 +368,7 @@ def get_parent_dir(path):
 def get_addons(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc','addon_subdir','is_module_path','use'] )
     addons_path=[]
-    for c in [x for x in items if x['use']=='addon']:
+    for c in [x for x in items if x['use'] in ['server','addon'] ]:
         a=get_local_dir(c) 
         to_append=False
         path=a
@@ -700,6 +700,17 @@ def bzr_search(app_repository_ids):
     return ret #host_filter(ret)
 def deploy_search():
     return 
+
+def read_server_path_and_config_file(user_id, name):
+    d_ids = golive.search('deploy.deploy', [('user_id','=', user_id),
+                                            ('name', '=', 'cellpak8')] )
+    assert len(d_ids)==1
+    d_id = d_ids[0]
+
+    d = golive.read('deploy.deploy', d_id, ['validated_server_path',
+                                            'validated_config_file'] )
+    return d['validated_server_path'], d['validated_config_file']
+
 def get_user_id(user, hostname, opt):
     print 'get_user_id', [user,hostname]
     GROUP=pwd.getpwnam(user).pw_name
@@ -800,11 +811,12 @@ def update_repository(repository_ids, user_id, host_id):
         out_ids.append(r_id)
     return out_ids
 def validate_addon_path(repository_ids):
+    print repository_ids
     ret=get_addons(repository_ids)
     for c_id, addon_path,path,modules in ret:
         arg=[('id','=',c_id)]
         val={'validated_addon_path':addon_path}
-        #print val
+        print val
         r_id=update_one('deploy.repository',arg, val )
 
 def apps2repository(application_ids):
