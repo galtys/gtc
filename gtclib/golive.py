@@ -965,6 +965,7 @@ def get_deploy_options_group(parser):
     group = optparse.OptionGroup(parser, "DeployLogin")
     HOME=os.environ['HOME']
     cfg_fn=os.path.join(HOME,'.golive.conf')
+    key=''
     if os.path.isfile(cfg_fn):
         c = ConfigParser.ConfigParser()
         ret = c.read( [cfg_fn] )
@@ -974,14 +975,17 @@ def get_deploy_options_group(parser):
         passwd=c.get('deploy_server','passwd')
         dbname=c.get('deploy_server','dbname')
         subdir=c.get('user_options','subdir')
-        key=c.get('user_options','key')
+        if c.has_option('user_options', 'key'):
+            key=c.get('user_options','key')
     else:
         apiurl='http://localhost:10069/'
         login='admin'
         passwd='admin77'
         dbname='deploy'
         subdir='projects'
-        key=''
+    if not key:
+        if 'KEY' in os.environ and os.environ['KEY']:
+            key=os.environ['KEY']
     group.add_option("--api-url",
                      dest='apiurl',
                      help="Default: [%default]",
@@ -1014,7 +1018,6 @@ def get_deploy_options_group(parser):
                      help="Default: [%default]",
                      default=key
                      )
-
     return group
 
 def get_env(main_opt=None):
