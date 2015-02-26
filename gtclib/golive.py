@@ -974,13 +974,14 @@ def get_deploy_options_group(parser):
         passwd=c.get('deploy_server','passwd')
         dbname=c.get('deploy_server','dbname')
         subdir=c.get('user_options','subdir')
+        key=c.get('user_options','key')
     else:
         apiurl='http://localhost:10069/'
         login='admin'
         passwd='admin77'
         dbname='deploy'
         subdir='projects'
-    
+        key=''
     group.add_option("--api-url",
                      dest='apiurl',
                      help="Default: [%default]",
@@ -1008,6 +1009,12 @@ def get_deploy_options_group(parser):
                      help="Default: [%default]",
                      default=subdir
                      )
+    group.add_option("--key",
+                     dest='key',
+                     help="Default: [%default]",
+                     default=key
+                     )
+
     return group
 
 def get_env(main_opt=None):
@@ -1032,15 +1039,6 @@ def get_env(main_opt=None):
 def parse(sys_args):
     global opt
     
-    if 'PASS' in os.environ:
-        PASS=os.environ['PASS']
-    else:
-        PASS=None
-    if PASS:
-        key=PASS
-    else:
-        key=getpass.getpass()
-
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
     usage += "  Commands: %s \n" % (','.join(exit_commands) )
 
@@ -1049,6 +1047,16 @@ def parse(sys_args):
     parser.add_option_group(deploy_group)
     opt, args = parser.parse_args(sys_args)
 
+    if opt.key:
+        PASS=opt.key
+    elif 'KEY' in os.environ:
+        PASS=os.environ['KEY']
+    else:
+        PASS=None
+    if PASS:
+        key=PASS
+    else:
+        key=getpass.getpass()
     
     user_id,host_id=get_env(opt)
 
