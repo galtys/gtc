@@ -12,7 +12,7 @@ sudo pip install --upgrade simple-crypt
 # Run
 
 ```
-export PASS=<your key>
+export KEY=<your key>
 golive -h
 golive
 ```
