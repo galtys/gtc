@@ -434,9 +434,10 @@ def records2config(model, ids, fields, key):
     items=read(model, ids, fields)
     for item in items:
         s=item[key]
-        c.add_section(s)
-        for f in fields:
-            c.set(s, f, item[f] )
+        if s:
+            c.add_section(s)
+            for f in fields:
+                c.set(s, f, item[f] )
     return c
 
 def save_config(c, fn):
@@ -446,6 +447,15 @@ def load_config(fn):
     c = ConfigParser.ConfigParser()
     ret = c.read( [fn] )
     return c
+def get_deploy_conf(opt):
+    fn=os.path.join(opt.datadir, 'deploy.deploy')
+    return load_config(fn)
+
+def get_server_and_conf(opt, deployment_name):
+    deploy_conf=get_deploy_conf(opt)
+    server_path=deploy_conf.get(deployment_name, 'validated_server_path')
+    config_file=deploy_conf.get(deployment_name, 'validated_config_file')
+    return server_path, config_file
 
 #def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
 #    c=ConfigParser.RawConfigParser()
@@ -771,6 +781,8 @@ def deploy_search():
     return 
 
 def read_server_path_and_config_file(user_id, name):
+    
+    
     d_ids = search('deploy.deploy', [('user_id','=', user_id),
                                             ('name', '=', 'cellpak8')] )
     assert len(d_ids)==1
@@ -870,6 +882,7 @@ def update_repository(repository_ids, user_id, host_id):
              'is_module_path':c['is_module_path'],
              'remote_name':c['remote_name'],
              'use':c['use'],
+             'name':c['name'],
              'push':c['push'],
              'pull':c['pull'],
              'delete':c['delete'],
@@ -1126,7 +1139,15 @@ def parse(sys_args):
     #validate_addon_path(local_r_ids)
     git_ids=git_search(local_r_ids)
     bzr_ids=bzr_search(local_r_ids)
-
+    def save_model(opt,model, arg, fields, key):
+        deploy_ids=search(model,arg)
+        c=records2config(model, deploy_ids, fields,
+                         key)
+        if not os.path.isdir(opt.datadir):
+            os.makedirs(opt.datadir)
+            fn=os.path.join(opt.datadir, model)
+            save_config(c, fn)
+            
     if len(args)==0:
         print HELP
     elif len(args)==1:
@@ -1150,16 +1171,27 @@ def parse(sys_args):
             arg=[('user_id','=',user_id)]
             run(arg, user_id, host_id,key)
         elif cmd=='save':
-            deploy_ids=search('deploy.deploy',[('user_id','=',user_id)])
-            c=records2config('deploy.deploy', deploy_ids, ['odoo_config',
-                                                           'validated_config_file',
-                                                           'name',
-                                                           'validated_server_path'],
-                             'name')
-            if not os.path.isdir(opt.datadir):
-                os.makedirs(opt.datadir)
-            fn=os.path.join(opt.datadir, 'deploy.deploy')
-            save_config(c, fn)
+            arg=[('user_id','=',user_id)]
+            fields=['odoo_config',
+                    'validated_config_file',
+                    'name',
+                    'id',
+                    'validated_server_path']
+            save_model(opt,'deploy.deploy', arg, fields, 'name')
+            arg=[('local_user_id', '=', user_id)]
+            fields=['name', 'id', 'type',  'use',
+                    'version',
+                    'validated_addon_path',
+                    'remote_name',
+                    'branch',
+                    'addon_subdir',
+                    'is_module_path',
+                    'root_directory',
+                    'local_location_fnc',                    
+                    'delete',
+                    'push',
+                    'pull']
+            save_model(opt,'deploy.repository', arg, fields, 'name')
             
     elif len(args)==2:
         def disp(a):
