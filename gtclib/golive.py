@@ -26,7 +26,9 @@ import subprocess
 
 import base64
 import ConfigParser
+import platform
 
+print platform.dist()
 
 sock=None
 opt=None
