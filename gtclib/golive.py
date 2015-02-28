@@ -432,12 +432,15 @@ def list_modules(user_id, host_id, name):
 def records2config(model, ids, fields, key):
     c=ConfigParser.RawConfigParser()
     items=read(model, ids, fields)
+    #print items
     for item in items:
         s=item[key]
         if s:
             c.add_section(s)
             for f in fields:
                 c.set(s, f, item[f] )
+        else:
+            print item
     return c
 
 def save_config(c, fn):
@@ -1145,8 +1148,8 @@ def parse(sys_args):
                          key)
         if not os.path.isdir(opt.datadir):
             os.makedirs(opt.datadir)
-            fn=os.path.join(opt.datadir, model)
-            save_config(c, fn)
+        fn=os.path.join(opt.datadir, model)
+        save_config(c, fn)
             
     if len(args)==0:
         print HELP
@@ -1179,7 +1182,10 @@ def parse(sys_args):
                     'validated_server_path']
             save_model(opt,'deploy.deploy', arg, fields, 'name')
             arg=[('local_user_id', '=', user_id)]
-            fields=['name', 'id', 'type',  'use',
+            fields=['name', 
+                    'id',
+                    'url',
+                    'type',  'use',
                     'version',
                     'validated_addon_path',
                     'remote_name',
