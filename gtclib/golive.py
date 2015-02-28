@@ -18,8 +18,23 @@ import json
 import requests
 import getpass
 import xmlrpclib
-hostname=socket.gethostname()
-DOMAIN=[('name','ilike',"%s%%"%hostname)]
+#hostname=socket.gethostname()
+#DOMAIN=[('name','ilike',"%s%%"%hostname)]
+import getpass
+import grp,pwd
+import subprocess
+
+import base64
+import ConfigParser
+
+
+sock=None
+opt=None
+uid=None
+DEBUG=True
+
+GOLIVE_CONF=os.path.expanduser('~/.golive.conf')
+
 def render_mako(template, context, fn=None):
     t=Template(template)
     if fn:
@@ -32,15 +47,6 @@ def render_mako(template, context, fn=None):
         buf.close()
     else:
         return buf.getvalue()
-sock=None
-opt=None
-uid=None
-DEBUG=True
-import getpass
-import grp,pwd
-import subprocess
-from simplecrypt import encrypt, decrypt
-import base64
 
 def sudo_chown(fn,user,group,options=''): #-R
 
@@ -166,7 +172,12 @@ def run_bash(f_id,name,content,subprocess_arg):
     subprocess.call(["rm",script_name])
     return ret
 
-def render_pass(content, pass_map,key):        
+def render_pass(content, pass_map,key):     
+    try:
+        from simplecrypt import encrypt, decrypt
+    except ImportError:
+        print "could not import simplecrypt"
+
     for r in pass_map:
         tag=r['pass_tag']
         if tag in content:
@@ -180,6 +191,7 @@ def render_pass(content, pass_map,key):
 def password(cmd2,key):
     field_ids = search('ir.model.fields', [('relation','=','deploy.password')])
     fields = read('ir.model.fields', field_ids, ['name','model_id'] )
+    from simplecrypt import encrypt, decrypt
     for f in fields:
         print 44*'_'
         model_id,model = f['model_id']
@@ -417,17 +429,35 @@ def list_modules(user_id, host_id, name):
         #if is_module:
          #   pass
 
-def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
+def records2config(model, ids, fields, key):
     c=ConfigParser.RawConfigParser()
-    cfn=os.path.join(fn)
-    if 1:
-        c.add_section('options')
-        for o,v in options:
-            c.set('options', o,v)
-    c.set('options', 'addons_path', ','.join(list(set(addons))) )
-    if logfile is not None:
-        c.set('options', 'logfile', logfile)
+    items=read(model, ids, fields)
+    for item in items:
+        s=item[key]
+        c.add_section(s)
+        for f in fields:
+            c.set(s, f, item[f] )
     return c
+
+def save_config(c, fn):
+    with open(fn, 'wb') as cf:
+        c.write( cf )
+def load_config(fn):
+    c = ConfigParser.ConfigParser()
+    ret = c.read( [fn] )
+    return c
+
+#def create_odoo_config(options, addons, fn='server7devel.conf', logfile=None):
+#    c=ConfigParser.RawConfigParser()
+#    cfn=os.path.join(fn)
+#    if 1:
+#        c.add_section('options')
+#        for o,v in options:
+#            c.set('options', o,v)
+#    c.set('options', 'addons_path', ','.join(list(set(addons))) )
+#    if logfile is not None:
+#        c.set('options', 'logfile', logfile)
+#    return c
 #def generate_config(clone_ids,options, fn=None, logfile=None):
 #    ret=get_addons(clone_ids)
 #    addons=[x[1] for x in ret if x[1]]
@@ -963,9 +993,21 @@ subdir=projects
 
 def get_deploy_options_group(parser):
     group = optparse.OptionGroup(parser, "DeployLogin")
-    HOME=os.environ['HOME']
-    cfg_fn=os.path.join(HOME,'.golive.conf')
+    #HOME=os.environ['HOME']
+    cfg_fn=GOLIVE_CONF
+
+    #GOLIVE_ROOT=os.path.expanduser('~/.golive')
+    #if not path.isdir(GOLIVE_ROOT):
+    #    
+    #GOLIVE_DEPLOYMENTS_CONF=os.path.join(GOLIVE_ROOT, 'deploy.deploy')
+
     key=''
+    apiurl='http://localhost:10069/'
+    login='admin'
+    passwd='admin77'
+    dbname='deploy'
+    subdir='projects'
+    datadir=os.path.expanduser('~/%s/%s' %(subdir, 'data') )    
     if os.path.isfile(cfg_fn):
         c = ConfigParser.ConfigParser()
         ret = c.read( [cfg_fn] )
@@ -977,15 +1019,12 @@ def get_deploy_options_group(parser):
         subdir=c.get('user_options','subdir')
         if c.has_option('user_options', 'key'):
             key=c.get('user_options','key')
-    else:
-        apiurl='http://localhost:10069/'
-        login='admin'
-        passwd='admin77'
-        dbname='deploy'
-        subdir='projects'
+        if c.has_option('user_options', 'datadir'):
+            datadir=c.get('user_options', 'datadir')
     if not key:
         if 'KEY' in os.environ and os.environ['KEY']:
             key=os.environ['KEY']
+
     group.add_option("--api-url",
                      dest='apiurl',
                      help="Default: [%default]",
@@ -1012,6 +1051,11 @@ def get_deploy_options_group(parser):
                      dest='subdir',
                      help="Default: [%default]",
                      default=subdir
+                     )
+    group.add_option("--datadir",
+                     dest='datadir',
+                     help="Default: [%default]",
+                     default=datadir
                      )
     group.add_option("--key",
                      dest='key',
@@ -1105,6 +1149,17 @@ def parse(sys_args):
         elif cmd=='run':
             arg=[('user_id','=',user_id)]
             run(arg, user_id, host_id,key)
+        elif cmd=='save':
+            deploy_ids=search('deploy.deploy',[('user_id','=',user_id)])
+            c=records2config('deploy.deploy', deploy_ids, ['odoo_config',
+                                                           'validated_config_file',
+                                                           'name',
+                                                           'validated_server_path'],
+                             'name')
+            if not os.path.isdir(opt.datadir):
+                os.makedirs(opt.datadir)
+            fn=os.path.join(opt.datadir, 'deploy.deploy')
+            save_config(c, fn)
             
     elif len(args)==2:
         def disp(a):
@@ -1118,6 +1173,7 @@ def parse(sys_args):
         elif cmd=='password':
             password(cmd2,key)
         elif cmd=='encrypt':
+            from simplecrypt import encrypt, decrypt
             x=encrypt(key,cmd2)
             t=base64.b64encode(x)
             print [t]
@@ -1144,9 +1200,7 @@ def parse(sys_args):
             print ' '.join(header)
             for d in deployments:
                 print ' '.join( [ disp(d[h]) for h in header])
-
-
-                
+            
         elif cmd=='config' and cmd2=='show':
             deploy_ids=search('deploy.deploy',[('user_id','=',user_id)])
             #deploy_ids = host_filter(deploy_ids,model='deploy.deploy',field='host_id')
