@@ -18,7 +18,7 @@ import json
 import requests
 import getpass
 import xmlrpclib
-#hostname=socket.gethostname()
+
 #DOMAIN=[('name','ilike',"%s%%"%hostname)]
 import getpass
 import grp,pwd
@@ -1103,7 +1103,7 @@ def get_env(main_opt=None):
 
 def parse(sys_args):
     global opt
-    
+    hostname=socket.gethostname()    
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
     usage += "  Commands: %s \n" % (','.join(exit_commands) )
 
