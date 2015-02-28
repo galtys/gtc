@@ -440,7 +440,7 @@ def records2config(model, ids, fields, key):
             for f in fields:
                 c.set(s, f, item[f] )
         else:
-            print item
+            pass#print item
     return c
 
 def save_config(c, fn):
