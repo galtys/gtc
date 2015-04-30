@@ -752,12 +752,15 @@ def run_sql(cs, sql):
 def sql_as_superuser(sql,port='5432'):
     conn_string1 = "host='%s' dbname='postgres' user='%s' port='%s'" % ('127.0.0.1', 'postgres',port)
     #print conn_string1
-    ret=run_sql(conn_string1, sql)
+    try:
+        ret=run_sql(conn_string1, sql)
+    except:
+        ret=None
     if ret is None:        
         passwd=os.environ.get('PG_PASSWD')
         if passwd is None:
-            passwd = getpass.getpass()
-        conn_string = "host='%s' dbname='postgres' user='%s' port='%s' password='%s'" % ('127.0.0.1', 'postgres',passwd)
+            passwd = 'postgres'#getpass.getpass()
+        conn_string = "host='%s' dbname='postgres' user='%s' port='%s' password='%s'" % ('127.0.0.1', 'postgres','5432',passwd)
         ret=run_sql(conn_string, sql)
     return ret
     
