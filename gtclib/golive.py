@@ -918,16 +918,42 @@ def apps2repository(application_ids):
                 app_repository_ids.append(ar_id)
     return app_repository_ids
     
-def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
+def update_deployments(opt, user_id, host_id, deploy_ids):#app_ids, user_id, pg_user_id, name=''):
     #r_ids = apps2repository(app_ids)
-    user = read('deploy.host.user', user_id, ['name','login','home'])
-    ROOT=user['home']
-    print 'update_deployments (validating config and server path)'
-    ROOT=os.path.join(ROOT, opt.subdir)
-    if not os.path.isdir(ROOT):
-        os.makedirs(ROOT) #create if it does not exist
+    #user = read('deploy.host.user', user_id, ['name','login','home'])
+    #ROOT=user['home']
+    print 44*'_'
+    print 'Updating validated_config_file and validated_server_path back to server'
+    #ROOT=os.path.join(ROOT, opt.subdir)
+    #if not os.path.isdir(ROOT):
+    #    os.makedirs(ROOT) #create if it does not exist
+    for d_id in deploy_ids:
+        d=read('deploy.deploy', d_id, ['odoo_config','clone_ids','user_id'])
+        clone_ids = d['clone_ids']
+        server_user_id,user_name= d['user_id']
+        assert server_user_id==user_id
+        c_id,server_path=get_server(clone_ids)
 
-    for app_id in app_ids:
+        #print server_path
+        c=d['odoo_config']
+        if os.path.isfile(c):
+            validated_config_file = c
+        else:
+            validated_config_file = ''
+        if server_path and os.path.isdir(server_path):
+            validated_server_path = server_path
+        else:
+            validated_server_path = ''
+        val={'validated_config_file': validated_config_file,
+             'validated_server_path': validated_server_path,
+         }
+        #print 'server path: ', c['name']
+        arg=[('id','=',d_id)]
+        update_one('deploy.deploy',arg, val)
+        print 'Result below (you will only see server path and config file name if present in your system)'
+        print '%s/openerp-server -c %s' %(validated_server_path, validated_config_file)
+
+    for app_id in []:#app_ids:
         arg=[('application_id','in',[app_id]),('user_id','=',user_id),('pg_user_id','=',pg_user_id)
          ]
         if name:
@@ -1270,7 +1296,11 @@ def parse(sys_args):
         if cmd=='list' and cmd2 =='modules':
             ret = list_modules(user_id, host_id)
             print ret
-    elif len(args)==4:
+        if cmd=='update' and cmd2=='server':
+            print 'update server'
+            update_deployments(opt, user_id, host_id, [int(name)] )
+
+    elif len(args)==40:
         cmd,cmd2,dbuser,apps_str=args
         pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
         assert len(pg_user_ids)==1
@@ -1297,7 +1327,7 @@ def parse(sys_args):
                     write('deploy.deploy',d_id,{'site_name':app_name})
                 if not d['mode']:
                     write('deploy.deploy',d_id,{'mode':'dev'})
-        
+
 
         #elif len(args)==3:
         #cmd,cmd2,dbuser=args
@@ -1306,8 +1336,7 @@ def parse(sys_args):
         #pg_user_id=pg_user_ids[0]
 
         if cmd=='validate' and cmd2=='config':
-
-            update_deployments(opt,update_app_ids, user_id, pg_user_id, name='')
+            print "OBSOLETE, exit"
 
         elif cmd=='config' and cmd2=='write': #deprecated
             pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
