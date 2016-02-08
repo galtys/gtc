@@ -7,7 +7,7 @@ from bzrlib.branch import Branch
 from bzrlib.plugin import load_plugins
 load_plugins()
 import subprocess
-import psycopg2
+#import psycopg2
 import ConfigParser
 import socket
 from mako.template import Template
