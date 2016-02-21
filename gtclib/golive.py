@@ -27,7 +27,7 @@ import subprocess
 import base64
 import ConfigParser
 import platform
-
+import oerplib
 print platform.dist()
 
 sock=None
@@ -127,7 +127,10 @@ def read(model,ids,fnames):
 #    return sock.execute(dbname, uid, 'g77', 'deploy.repository', 'read',  clone_ids,['git_clone','mkdir'])
     #print opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames
     ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames)
-    #print ret
+    #model_obj = oerp.get(model)
+    #ret2 = model_obj.read(ids, fnames)
+    #ret2 = oerp.
+    #print ret2
     return ret
 def write(model,ids,value):
     ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'write',  ids,value)
@@ -1027,6 +1030,8 @@ validate config jan all .... will use get_server function, will use
                              odoo_config to validate config file existence. 
                              Will update validate_root with ROOT.                               
 
+python golive.py update server 43  [update deployment number (id) 43]
+
 config file: ~/.golive.conf
 Example:
 [deploy_server]
@@ -1115,9 +1120,11 @@ def get_env(main_opt=None):
     global uid
     global sock
     global opt
+    global oerp
+    global oerp_user
     if main_opt:
         opt=main_opt
-        print opt.apiurl
+        #print opt.apiurl
     import getpass
     current_login=getpass.getuser()
     USER=current_login
@@ -1127,6 +1134,13 @@ def get_env(main_opt=None):
     sock_common = xmlrpclib.ServerProxy (opt.apiurl+'xmlrpc/common')
     uid = sock_common.login(opt.dbname, opt.login,opt.passwd)
     sock = xmlrpclib.ServerProxy(opt.apiurl+'xmlrpc/object')
+    #print opt.apiurl
+    prot,host = opt.apiurl.split('://')
+
+    #oerp = oerplib.OERP(host[:-1], protocol='xmlrpc+ssl', port=443)
+    #oerp_user = oerp.login(opt.login, opt.passwd, opt.dbname)
+    #print 44*'*'
+    #print oerp_user.name
     user_id,host_id=get_user_id(USER, hostname, opt)
     return user_id, host_id
 
