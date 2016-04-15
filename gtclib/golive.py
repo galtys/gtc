@@ -7,7 +7,7 @@ from bzrlib.branch import Branch
 from bzrlib.plugin import load_plugins
 load_plugins()
 import subprocess
-#import psycopg2
+import psycopg2
 import ConfigParser
 import socket
 from mako.template import Template
@@ -27,7 +27,7 @@ import subprocess
 import base64
 import ConfigParser
 import platform
-import oerplib
+
 print platform.dist()
 
 sock=None
@@ -127,10 +127,7 @@ def read(model,ids,fnames):
 #    return sock.execute(dbname, uid, 'g77', 'deploy.repository', 'read',  clone_ids,['git_clone','mkdir'])
     #print opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames
     ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'read',  ids,fnames)
-    #model_obj = oerp.get(model)
-    #ret2 = model_obj.read(ids, fnames)
-    #ret2 = oerp.
-    #print ret2
+    #print ret
     return ret
 def write(model,ids,value):
     ret =  sock.execute(opt.dbname, uid, opt.passwd, model, 'write',  ids,value)
@@ -336,7 +333,55 @@ def init(cmd2, user_id, host_id):
             #print arg, val
             update_one('deploy.file',arg,val)
             i+=10
+def add_app(cmd2, user_id, host_id):
+    app_ids = search('deploy.application', [('name','=',cmd2)] )
+    assert len(app_ids)==1
+    #for app_id in app_ids:
+    arg=[('id','=',user_id)]
+    val={'app_ids':[(4,app_ids) ]}
+    update_one('deploy.host.user', arg, val)
+    app_ids = search('deploy.application',[])
+    apps = read('deploy.application', app_ids,['name'])
+    print 'List of applicatioins'
+    for a in apps:
+        print '  ',a
+def add_deployment(cmd2, port,user_id, host_id):
+    app_ids = search('deploy.application', [('name','=',cmd2)] )
+    user_ids=search('deploy.host.user', [('id','=',user_id)] )
+    assert len(user_ids)==1
+    users = read('deploy.host.user',user_ids,['name','login'])
+    user=users[0]
+    assert user['name']==user['login']
+    dbuser=user['name']
 
+    pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id','=',host_id)] )
+    assert len(pg_user_ids)==1
+    pg_user_id=pg_user_ids[0]
+    assert len(app_ids)==1
+    app_id=app_ids[0]
+
+    option_ids = search('deploy.options', [('xmlrpc_port','=',port)] )
+    assert len(option_ids)==1
+    option_id=option_ids[0]
+    password_ids = search('deploy.password',[('name','=','PASS_deploy_pg_user_78_password_id')])
+    assert len(password_ids)==1
+    password_id = password_ids[0]
+
+    arg=[('application_id','=', app_id),
+         ('pg_user_id','=', pg_user_id),
+         ('user_id','=', user_id),
+         ]
+
+    val={'name':cmd2,
+         'application_id': app_id,
+         'pg_user_id':pg_user_id,
+         'user_id':user_id,
+         'option_id':option_id,
+         'password_id':password_id}
+
+    d_id=update_one('deploy.deploy', arg,val)
+    print 'export DEPLOYMENT_ID=%d'%d_id
+         
 def data_export(master_data_module):
     m_id=search('ir.module.module', [('name','=',master_data_module)] )
     #print m_id,master_data_module
@@ -752,18 +797,15 @@ def run_sql(cs, sql):
     conn.commit()
     return d
 
-def sql_as_superuser(sql,port='5432'):
-    conn_string1 = "host='%s' dbname='postgres' user='%s' port='%s'" % ('127.0.0.1', 'postgres',port)
+def sql_as_superuser(sql,port='5432', superuser='postgres', password='postgres'):
+    conn_string1 = "host='%s' dbname='postgres' user='%s' port='%s'" % ('127.0.0.1', superuser,port)
     #print conn_string1
-    try:
-        ret=run_sql(conn_string1, sql)
-    except:
-        ret=None
+    ret=run_sql(conn_string1, sql)
     if ret is None:        
         passwd=os.environ.get('PG_PASSWD')
         if passwd is None:
-            passwd = 'postgres'#getpass.getpass()
-        conn_string = "host='%s' dbname='postgres' user='%s' port='%s' password='%s'" % ('127.0.0.1', 'postgres','5432',passwd)
+            passwd = getpass.getpass()
+        conn_string = "host='%s' dbname='postgres' user='%s' port='%s' password='%s'" % ('127.0.0.1', 'postgres',passwd)
         ret=run_sql(conn_string, sql)
     return ret
     
@@ -845,7 +887,7 @@ def update_pg_user_passwd(user,passwd,port='5432'):
     sql="alter user %s with password '%s'"%(user,passwd)
     return sql_as_superuser(sql, port=port)
 
-def update_clusters(host_id,key):
+def update_clusters(host_id,key, superuser='postgres'):
     #subprocess.call(["chmod","+x",script])
     s=subprocess.Popen(["pg_lsclusters","-h"], stdout=subprocess.PIPE)
     stdoutdata, stderrdata=s.communicate()
@@ -875,6 +917,9 @@ def update_clusters(host_id,key):
                 pg_user_id=update_one('deploy.pg.user',arg,val)
             #pg_user_ids = search('deploy.pg.user',[('cluster_id','=',pg_id)])
             #pg_users = read('deploy.pg.user',pg_user_ids,['login','password_id'])
+def pg_deploy():
+    pass
+
 
 def update_repository(repository_ids, user_id, host_id):
     out_ids=[]
@@ -921,42 +966,16 @@ def apps2repository(application_ids):
                 app_repository_ids.append(ar_id)
     return app_repository_ids
     
-def update_deployments(opt, user_id, host_id, deploy_ids):#app_ids, user_id, pg_user_id, name=''):
+def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
     #r_ids = apps2repository(app_ids)
-    #user = read('deploy.host.user', user_id, ['name','login','home'])
-    #ROOT=user['home']
-    print 44*'_'
-    print 'Updating validated_config_file and validated_server_path back to server'
-    #ROOT=os.path.join(ROOT, opt.subdir)
-    #if not os.path.isdir(ROOT):
-    #    os.makedirs(ROOT) #create if it does not exist
-    for d_id in deploy_ids:
-        d=read('deploy.deploy', d_id, ['odoo_config','clone_ids','user_id'])
-        clone_ids = d['clone_ids']
-        server_user_id,user_name= d['user_id']
-        assert server_user_id==user_id
-        c_id,server_path=get_server(clone_ids)
+    user = read('deploy.host.user', user_id, ['name','login','home'])
+    ROOT=user['home']
+    print 'update_deployments (validating config and server path)'
+    ROOT=os.path.join(ROOT, opt.subdir)
+    if not os.path.isdir(ROOT):
+        os.makedirs(ROOT) #create if it does not exist
 
-        #print server_path
-        c=d['odoo_config']
-        if os.path.isfile(c):
-            validated_config_file = c
-        else:
-            validated_config_file = ''
-        if server_path and os.path.isdir(server_path):
-            validated_server_path = server_path
-        else:
-            validated_server_path = ''
-        val={'validated_config_file': validated_config_file,
-             'validated_server_path': validated_server_path,
-         }
-        #print 'server path: ', c['name']
-        arg=[('id','=',d_id)]
-        update_one('deploy.deploy',arg, val)
-        print 'Result below (you will only see server path and config file name if present in your system)'
-        print '%s/openerp-server -c %s' %(validated_server_path, validated_config_file)
-
-    for app_id in []:#app_ids:
+    for app_id in app_ids:
         arg=[('application_id','in',[app_id]),('user_id','=',user_id),('pg_user_id','=',pg_user_id)
          ]
         if name:
@@ -1029,8 +1048,6 @@ run deploy.deploy .... will generate config files and daemon files
 validate config jan all .... will use get_server function, will use 
                              odoo_config to validate config file existence. 
                              Will update validate_root with ROOT.                               
-
-python golive.py update server 43  [update deployment number (id) 43]
 
 config file: ~/.golive.conf
 Example:
@@ -1120,11 +1137,9 @@ def get_env(main_opt=None):
     global uid
     global sock
     global opt
-    global oerp
-    global oerp_user
     if main_opt:
         opt=main_opt
-        #print opt.apiurl
+        print opt.apiurl
     import getpass
     current_login=getpass.getuser()
     USER=current_login
@@ -1134,13 +1149,6 @@ def get_env(main_opt=None):
     sock_common = xmlrpclib.ServerProxy (opt.apiurl+'xmlrpc/common')
     uid = sock_common.login(opt.dbname, opt.login,opt.passwd)
     sock = xmlrpclib.ServerProxy(opt.apiurl+'xmlrpc/object')
-    #print opt.apiurl
-    prot,host = opt.apiurl.split('://')
-
-    #oerp = oerplib.OERP(host[:-1], protocol='xmlrpc+ssl', port=443)
-    #oerp_user = oerp.login(opt.login, opt.passwd, opt.dbname)
-    #print 44*'*'
-    #print oerp_user.name
     user_id,host_id=get_user_id(USER, hostname, opt)
     return user_id, host_id
 
@@ -1215,6 +1223,9 @@ def parse(sys_args):
             bzr_push(bzr_ids)
         elif cmd=='pg':
             cluster_ids = update_clusters(host_id,key)
+        elif cmd=='pg_deploy':
+            cluster_ids = pg_deploy(host_id,key)
+            
         elif cmd=='run':
             arg=[('user_id','=',user_id)]
             run(arg, user_id, host_id,key)
@@ -1250,6 +1261,8 @@ def parse(sys_args):
         cmd,cmd2=args
         if cmd=='init':
             init(cmd2, user_id, host_id)
+        elif cmd=='add_app':
+            add_app(cmd2, user_id, host_id)
         elif cmd=='run':
             arg=[('user_id','=',user_id), ('template_id.model','=',cmd2)]
             run(arg, user_id, host_id,key)
@@ -1310,11 +1323,11 @@ def parse(sys_args):
         if cmd=='list' and cmd2 =='modules':
             ret = list_modules(user_id, host_id)
             print ret
-        if cmd=='update' and cmd2=='server':
-            print 'update server'
-            update_deployments(opt, user_id, host_id, [int(name)] )
+        elif cmd=='add_deployment':
+            port=name
+            add_deployment(cmd2, port, user_id, host_id)
 
-    elif len(args)==40:
+    elif len(args)==4:
         cmd,cmd2,dbuser,apps_str=args
         pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
         assert len(pg_user_ids)==1
@@ -1341,7 +1354,7 @@ def parse(sys_args):
                     write('deploy.deploy',d_id,{'site_name':app_name})
                 if not d['mode']:
                     write('deploy.deploy',d_id,{'mode':'dev'})
-
+        
 
         #elif len(args)==3:
         #cmd,cmd2,dbuser=args
@@ -1350,7 +1363,8 @@ def parse(sys_args):
         #pg_user_id=pg_user_ids[0]
 
         if cmd=='validate' and cmd2=='config':
-            print "OBSOLETE, exit"
+
+            update_deployments(opt,update_app_ids, user_id, pg_user_id, name='')
 
         elif cmd=='config' and cmd2=='write': #deprecated
             pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id.name','=',hostname)] )
