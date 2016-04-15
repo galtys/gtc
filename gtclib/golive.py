@@ -7,7 +7,10 @@ from bzrlib.branch import Branch
 from bzrlib.plugin import load_plugins
 load_plugins()
 import subprocess
+#<<<<<<< HEAD
 import psycopg2
+#=======
+#>>>>>>> e5341c7cae64a684be8628876dca18d7002ba30a
 import ConfigParser
 import socket
 from mako.template import Template
@@ -767,6 +770,7 @@ def create_or_update_db_user(options):
     #if o['db_password']:
     #    
     #else:
+    import psycopg2
     conn_string = "host='%s' dbname='postgres' user='%s' password='%s'" % (o['db_host'], o['db_user'],o['db_password'] )
     if 1:
         #print 'TRY: ', [conn_string]
@@ -788,6 +792,7 @@ def create_or_update_db_user(options):
     cr.close()
     conn.commit()
 def run_sql(cs, sql):
+    import psycopg2
     conn = psycopg2.connect(cs)
     cr = conn.cursor()
     ret=cr.execute(sql)
