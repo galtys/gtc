@@ -375,12 +375,12 @@ def add_deployment(cmd2, port,user_id, host_id):
     password_ids = search('deploy.password',[('name','=','PASS_deploy_pg_user_78_password_id')])
     assert len(password_ids)==1
     password_id = password_ids[0]
-
+    pg_uid = get_pg_user_id(user_id, host_id)
     arg=[('application_id','=', app_id),
-         ('pg_user_id','=', pg_user_id),
+         ('pg_user_id','=', pg_uid),
          ('user_id','=', user_id),
          ]
-
+    pg_user_id=pg_uid
     val={'name':cmd2,
          'application_id': app_id,
          'pg_user_id':pg_user_id,
@@ -809,7 +809,7 @@ def run_sql(cs, sql):
     return d
 
 def sql_as_superuser(sql,port='5432', superuser='postgres', password='postgres'):
-    conn_string1 = "host='%s' dbname='postgres' user='%s' port='%s'" % ('127.0.0.1', superuser,port)
+    conn_string1 = "host='%s' dbname='postgres' user='%s' port='%s' password='%s'" % ('127.0.0.1', superuser,port,password)
     #print conn_string1
     ret=run_sql(conn_string1, sql)
     if ret is None:        
@@ -976,8 +976,44 @@ def apps2repository(application_ids):
             if ar_id not in app_repository_ids:
                 app_repository_ids.append(ar_id)
     return app_repository_ids
-    
-def update_deployments(opt,app_ids, user_id, pg_user_id, name=''):
+def update_deployments(opt, user_id, host_id, deploy_ids):#app_ids, user_id, pg_user_id, name=''):
+    #r_ids = apps2repository(app_ids)                                                                                                                                                                        
+    #user = read('deploy.host.user', user_id, ['name','login','home'])                                                                                                                                       
+    #ROOT=user['home']                                                                                                                                                                                       
+    print 44*'_'
+    print 'Updating validated_config_file and validated_server_path back to server'
+    #ROOT=os.path.join(ROOT, opt.subdir)                                                                                                                                                                     
+    #if not os.path.isdir(ROOT):                                                                                                                                                                             
+    #    os.makedirs(ROOT) #create if it does not exist                                                                                                                                                      
+    for d_id in deploy_ids:
+        d=read('deploy.deploy', d_id, ['odoo_config','clone_ids','user_id'])
+        clone_ids = d['clone_ids']
+        server_user_id,user_name= d['user_id']
+        assert server_user_id==user_id
+        c_id,server_path=get_server(clone_ids)
+
+        #print server_path                                                                                                                                                                                   
+        c=d['odoo_config']
+        if os.path.isfile(c):
+            validated_config_file = c
+        else:
+            validated_config_file = ''
+        if server_path and os.path.isdir(server_path):
+            validated_server_path = server_path
+        else:
+            validated_server_path = ''
+        val={'validated_config_file': validated_config_file,
+             'validated_server_path': validated_server_path,
+         }
+        #print 'server path: ', c['name']                                                                                                                                                                    
+        arg=[('id','=',d_id)]
+        update_one('deploy.deploy',arg, val)
+        print 'Result below (you will only see server path and config file name if present in your system)'
+        print '%s/openerp-server -c %s' %(validated_server_path, validated_config_file)
+
+
+
+def update_deploymentsOLD(opt,app_ids, user_id, pg_user_id, name=''):
     #r_ids = apps2repository(app_ids)
     user = read('deploy.host.user', user_id, ['name','login','home'])
     ROOT=user['home']
@@ -1348,6 +1384,9 @@ def parse(sys_args):
         elif cmd=='add_deployment':
             port=name
             add_deployment(cmd2, port, user_id, host_id)
+        elif cmd=='update' and cmd2=='server':
+            print 'update server'
+            update_deployments(opt, user_id, host_id, [int(name)] )
 
     elif len(args)==4:
         cmd,cmd2,dbuser,apps_str=args
