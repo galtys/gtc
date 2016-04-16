@@ -1295,7 +1295,7 @@ def parse(sys_args):
             pname=password_tag('deploy.pg.user', pg_user_id, 'password_id')
             val={'name':pname,
                  'password':t}
-            update_one('deploy.password',arg,pass)
+            update_one('deploy.password',arg,val)
             
         elif cmd=='export':
             data_export(cmd2)
