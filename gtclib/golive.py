@@ -192,7 +192,9 @@ def render_pass(content, pass_map,key):
             p=decrypt(key,p64)
             content=content.replace(tag,p)
     return content
-
+def password_tag(model, res_id, field_name):
+    pname="PASS_%s_%s_%s"%(model.replace('.','_'),r['id'],field_name)
+    return pname
 def password(cmd2,key):
     field_ids = search('ir.model.fields', [('relation','=','deploy.password')])
     fields = read('ir.model.fields', field_ids, ['name','model_id'] )
@@ -209,7 +211,8 @@ def password(cmd2,key):
         for r in records:
             if field_name not in r:
                 continue
-            pname="PASS_%s_%s_%s"%(model.replace('.','_'),r['id'],field_name)
+            #pname="PASS_%s_%s_%s"%(model.replace('.','_'),r['id'],field_name)
+            pname = password_tag(model, r['id'], field_name)
             if cmd2=='show':
                 pr=r[field_name]
                 print 'Model: %s, field: %s, res_id: %s' % (model, field_name, r['id'] )
@@ -348,18 +351,21 @@ def add_app(cmd2, user_id, host_id):
     print 'List of applicatioins'
     for a in apps:
         print '  ',a
-def add_deployment(cmd2, port,user_id, host_id):
-    app_ids = search('deploy.application', [('name','=',cmd2)] )
+def get_pg_user_id(user_id, host_id):
     user_ids=search('deploy.host.user', [('id','=',user_id)] )
     assert len(user_ids)==1
     users = read('deploy.host.user',user_ids,['name','login'])
     user=users[0]
     assert user['name']==user['login']
     dbuser=user['name']
-
     pg_user_ids=search('deploy.pg.user',[('login','=',dbuser),('cluster_id.host_id','=',host_id)] )
     assert len(pg_user_ids)==1
     pg_user_id=pg_user_ids[0]
+    return pg_user_id
+
+def add_deployment(cmd2, port,user_id, host_id):
+    app_ids = search('deploy.application', [('name','=',cmd2)] )
+
     assert len(app_ids)==1
     app_id=app_ids[0]
 
@@ -1280,6 +1286,17 @@ def parse(sys_args):
             print [t]
             d = base64.decodestring( t )
             print [decrypt(key,d)]
+        elif cmd=='pg_pass': #update pg user with password provided
+            from simplecrypt import encrypt, decrypt
+            x=encrypt(key,cmd2)
+            t=base64.b64encode(x)
+            arg=[('password','=',t)]
+            pg_user_id=get_pg_user_id(user_id, host_id)
+            pname=password_tag('deploy.pg.user', pg_user_id, 'password_id')
+            val={'name':pname,
+                 'password':t}
+            update_one('deploy.password',arg,pass)
+            
         elif cmd=='export':
             data_export(cmd2)
         elif cmd=='list' and cmd2=='applications':
