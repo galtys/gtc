@@ -7,10 +7,7 @@ from bzrlib.branch import Branch
 from bzrlib.plugin import load_plugins
 load_plugins()
 import subprocess
-#<<<<<<< HEAD
 import psycopg2
-#=======
-#>>>>>>> e5341c7cae64a684be8628876dca18d7002ba30a
 import ConfigParser
 import socket
 from mako.template import Template
@@ -565,7 +562,7 @@ def git_clone(clone_ids):
             if not os.path.isdir(p):
                 #if create_branch:
                 os.makedirs(p) #create if it does not exist
-            args = ["git","clone","--branch",branch, url,local_dir]
+            args = ["git","clone","--branch",branch,"--depth","1",url,local_dir]
             print args
             ret=subprocess.call(args)
                 #return out
