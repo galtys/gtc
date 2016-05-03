@@ -495,9 +495,9 @@ def records2config(model, ids, fields, key):
     for item in items:
         s=item[key]
         if s:
-            c.add_section(s)
+            c.add_section(str(s))
             for f in fields:
-                c.set(s, f, item[f] )
+                c.set(str(s), f, item[f] )
         else:
             pass#print item
     return c
@@ -1300,7 +1300,7 @@ def parse(sys_args):
                     'delete',
                     'push',
                     'pull']
-            save_model(opt,'deploy.repository', arg, fields, 'name')
+            save_model(opt,'deploy.repository', arg, fields, 'id')
             
     elif len(args)==2:
         def disp(a):
