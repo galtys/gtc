@@ -562,7 +562,8 @@ def git_clone(clone_ids):
             if not os.path.isdir(p):
                 #if create_branch:
                 os.makedirs(p) #create if it does not exist
-            args = ["git","clone","--branch",branch,"--depth","1",url,local_dir]
+            #args = ["git","clone","--branch",branch,"--depth","1",url,local_dir]
+            args = ["git","clone","--branch",branch,url,local_dir]
             print args
             ret=subprocess.call(args)
                 #return out
