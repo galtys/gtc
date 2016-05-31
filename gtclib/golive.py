@@ -28,7 +28,10 @@ import base64
 import ConfigParser
 import platform
 import logging
-_logger = logging.getLogger('gtclib.golive')
+if __name__ == '__main__':
+    _logger = logging.getLogger('gtclib.golive')
+else:
+    _logger = logging.getLogger(__name__)
 import socket
 import pprint
 import resource
@@ -38,6 +41,11 @@ sock=None
 opt=None
 uid=None
 DEBUG=True
+LOG_MAP={'debug':logging.DEBUG,
+         'info':logging.INFO,
+         'warning':logging.WARNING,
+         'error':logging.ERROR,
+         'critical':logging.CRITICAL}
 
 GOLIVE_CONF=os.path.expanduser('~/.golive.conf')
 
@@ -1120,10 +1128,11 @@ def get_deploy_options_group(parser):
                      help="Default: [%default]",
                      default=key
                      )
+    logging_options = ','.join( LOG_MAP.keys() ) + ' and none for no output'
     group.add_option("--log_level",
                      dest='log_level',
-                     help="Default: [%default]",
-                     default=logging.INFO
+                     help="Default: [%default], options: "+logging_options,
+                     default='info',
                      )
 
     return group
@@ -1162,8 +1171,11 @@ def parse(sys_args):
     deploy_group=get_deploy_options_group(parser)
     parser.add_option_group(deploy_group)
     opt, args = parser.parse_args(sys_args)
-    logging.getLogger('gtclib.golive').setLevel( opt.log_level )
-
+    if __name__=='__main__':
+        if opt.log_level != 'none':
+            logging.getLogger('gtclib.golive').setLevel( opt.log_level )
+    #else:
+     #   logging.getLogger('gtclib.golive')
     if opt.key:
         PASS=opt.key
     elif 'KEY' in os.environ:
