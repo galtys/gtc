@@ -334,6 +334,11 @@ def get_daemon(server_path, prod_config, USER=None, GROUP=None, ROOT=None):
                group=GROUP,
                ROOT=ROOT)
     return render_mako(DAEMON, arg)
+"""
+0
+down vote
+One famous family of hash functions with this property is the polynomial hash: For a field FF, and a value h∈Fh∈F, define fh(x0,x1,…,xn)=∑ni=0hixifh(x0,x1,…,xn)=∑i=0nhixi. The family of hash functions is {fh:h∈F}{fh:h∈F}. This family is k/|F|k/|F|-almost universal when its domain is strings of length kk, and it can be composed as you want by g(x0,…,xn+k)=f(x0,…,xk)+xk+1f(xk+1,…,xn)g(x0,…,xn+k)=f(x0,…,xk)+xk+1f(xk+1,…,xn).
+"""
 
 WSGI_SCRIPT="""import sys
 import openerp

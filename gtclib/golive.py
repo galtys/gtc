@@ -27,8 +27,12 @@ import subprocess
 import base64
 import ConfigParser
 import platform
-
-print platform.dist()
+import logging
+_logger = logging.getLogger('gtclib.golive')
+import socket
+import pprint
+import resource
+import os
 
 sock=None
 opt=None
@@ -71,16 +75,14 @@ def sudo_cp(src, dst):
 def sudo_chmod(fn, chmod):
     arg=["sudo","chmod",chmod,fn]
     if DEBUG:
-        print arg
+        _logger.debug("sudo_chmod arg:", arg)
     subprocess.call(arg)
 def run_chmod(fn, chmod):
     arg=["chmod",chmod,fn]
     if DEBUG:
-        print arg
+        _logger.debug("run_chmod arg:", arg)
     subprocess.call(arg)
 
-#import tempfile
-#import shutil
 def write_file(fn,c,user,group,chmod, user_id):
     current_login=getpass.getuser()
     USER=current_login
@@ -91,7 +93,7 @@ def write_file(fn,c,user,group,chmod, user_id):
     #temp_fp = tempfile.TemporaryFile(mode='wb')
     #temp_fp.write(c)
     #temp_fp.close(
-    print [user]
+    _logger.debug("write_file: user: %s", user)
     if user in ['root', 'postgres']:
         tmp=validated_root+fn #os.path.join(validated_root, fn)
         tmp_path,tmp_fn = os.path.split(tmp)
@@ -104,7 +106,7 @@ def write_file(fn,c,user,group,chmod, user_id):
         fp.close()
         #sudo_chown(tmp, user, group)
         if DEBUG:
-            print "Copy to destination : ", [tmp, fn]
+            _logger.debug("write_file, copy to destination: %s,%s",tmp,fn)
         if sudo_x:
             sudo_cp(tmp, fn)
             sudo_chown(fn, user, group)
@@ -115,13 +117,14 @@ def write_file(fn,c,user,group,chmod, user_id):
     else:
         tmp_path,tmp_fn = os.path.split(fn)
         if not os.path.isdir(tmp_path):
+            _logger.debug("write_file, os.makedirs tmp_path:%s", tmp_path)
             os.makedirs(tmp_path)
         fp=open(fn,'wb')
         fp.write(c)
         fp.close()
         if chmod:
             run_chmod(fn,chmod)
-        print 'File writen to: ', fn
+        _logger.debug("write_file, file written to: ", fn)
 
 def read(model,ids,fnames):
 #    return sock.execute(dbname, uid, 'g77', 'deploy.repository', 'read',  clone_ids,['git_clone','mkdir'])
@@ -154,11 +157,6 @@ def update_one(model, arg, value):
     else:
         raise ValueError
 
-import socket
-import pprint
-import resource
-import os
-
 def update_shmem(mem_total):
     pass
 
@@ -168,8 +166,7 @@ def run_bash(f_id,name,content,subprocess_arg):
     subprocess.call(["chmod","+x",script_name])
 
     arg = eval(subprocess_arg)
-    print 44*'_'
-    print 'Executing bash script name %s with args: %s'%( name, arg)
+    _logger.debug("run_bash, Executing bash script, name: %s, arg: %s", name, arg)
     ret=subprocess.call(arg )
     subprocess.call(["rm",script_name])
     return ret
@@ -178,14 +175,13 @@ def render_pass(content, pass_map,key):
     try:
         from simplecrypt import encrypt, decrypt
     except ImportError:
-        print "could not import simplecrypt"
-
+        _logger.error("could not import simplecrypt")
     for r in pass_map:
         tag=r['pass_tag']
         if tag in content:
             #print r
             p64=base64.decodestring( r['password'] )
-            print tag
+            #print tag
             p=decrypt(key,p64)
             content=content.replace(tag,p)
     return content
@@ -197,7 +193,7 @@ def password(cmd2,key):
     fields = read('ir.model.fields', field_ids, ['name','model_id'] )
     from simplecrypt import encrypt, decrypt
     for f in fields:
-        print 44*'_'
+        #print 44*'_'
         model_id,model = f['model_id']
         #print model_id, model
         res_ids = search(model, [])
@@ -212,7 +208,7 @@ def password(cmd2,key):
             pname = password_tag(model, r['id'], field_name)
             if cmd2=='show':
                 pr=r[field_name]
-                print 'Model: %s, field: %s, res_id: %s' % (model, field_name, r['id'] )
+                #print 'Model: %s, field: %s, res_id: %s' % (model, field_name, r['id'] )
                 if pr:
                     p=read('deploy.password', r[field_name][0], ['name','password'])
                     print '   Passord [id] name: [%s] %s'% (p['id'], p['name'] )
@@ -303,7 +299,6 @@ def run(arg, user_id, host_id, key):
                  'content_written':''}
             #print val
             write('deploy.file',f['id'], val)
-
     return
 
 def init(cmd2, user_id, host_id):
@@ -319,9 +314,9 @@ def init(cmd2, user_id, host_id):
             arg=eval(domain)
         else:
             arg=[]
-        print arg, t,cmd2
+        _logger.debug("init, arg: %s, t:%s, cmd2:%s", arg, t, cmd2)
         res_ids=search(cmd2, arg )
-        print res_ids
+        _logger.debug("init, res_ids: %s", res_ids)
         for res_id in res_ids:
             arg=[('template_id','=',t_id),
                  ('user_id','=',user_id),
@@ -345,9 +340,10 @@ def add_app(cmd2, user_id, host_id):
     update_one('deploy.host.user', arg, val)
     app_ids = search('deploy.application',[])
     apps = read('deploy.application', app_ids,['name'])
-    print 'List of applicatioins'
+    _logger.info('List of applicatioins')
     for a in apps:
-        print '  ',a
+        _logger.info("  %s",a)
+
 def get_pg_user_id(user_id, host_id):
     user_ids=search('deploy.host.user', [('id','=',user_id)] )
     assert len(user_ids)==1
@@ -386,7 +382,8 @@ def add_deployment(cmd2, port,user_id, host_id):
          'password_id':password_id}
 
     d_id=update_one('deploy.deploy', arg,val)
-    print 'export DEPLOYMENT_ID=%d'%d_id
+    _logger.info('Runn the following command:')
+    _logger.info('export DEPLOYMENT_ID=%d', d_id)
          
 def data_export(master_data_module):
     m_id=search('ir.module.module', [('name','=',master_data_module)] )
@@ -564,7 +561,7 @@ def git_clone(clone_ids):
                 os.makedirs(p) #create if it does not exist
             #args = ["git","clone","--branch",branch,"--depth","1",url,local_dir]
             args = ["git","clone","--branch",branch,url,local_dir]
-            print args
+            _logger.info("%s", args)
             ret=subprocess.call(args)
                 #return out
 
@@ -599,7 +596,8 @@ def git_status(clone_ids):
         cwd=os.getcwd()
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
-            print 44*'_', 'git', local_dir
+            #print 44*'_', 'git', local_dir
+            _logger.info("git status at local_dir: %s", local_dir)
             args = ["git","status","--branch"]
             subprocess.call(args)
             os.chdir(cwd)
@@ -636,12 +634,14 @@ def git_push(clone_ids):
             os.chdir(local_dir)
             if c['push']:
                 args = ["git","push",remote_name, branch]
-                print 44*'_', 'git push', local_dir, args
+               # print 44*'_', 'git push', local_dir, args
+                _logger.info("git push, local_dir: %s, args: %s", local_dir, args)
                 #print '  ',args
                 subprocess.call(args)
                 os.chdir(cwd)
             else:
-                print 44*'_', 'git push (SKIPPING)', local_dir
+                _logger.warning("git push (SKIPPING), local_dir: %s", local_dir)
+                #print 44*'_', 'git push (SKIPPING)', local_dir
 def bzr_push(clone_ids):
     items = read('deploy.repository',clone_ids,['url','local_location_fnc'] )
     for c in items:
@@ -664,12 +664,12 @@ def git_pull(clone_ids):
         branch=c['branch']
         if os.path.isdir(local_dir):
             os.chdir(local_dir)
-            print 44*'_', 'git pull', local_dir
+            #print 44*'_', 'git pull', local_dir
             args = ["git","pull","origin", branch]
-            print args
+            #print args
+            _logger.info("git pull, local_dir: %s, args: %s", local_dir, args)
             subprocess.call(args)
             os.chdir(cwd)
-
 
 def get_wsgi(prod_config):
     return WSGI_SCRIPT % (prod_config)
@@ -855,7 +855,8 @@ def read_server_path_and_config_file(user_id, name):
     return d['validated_server_path'], d['validated_config_file']
 
 def get_user_id(user, hostname, opt):
-    print 'get_user_id', [user,hostname]
+    _logger.info("get_user_id, user: %s, hostname: %s", user,hostname)
+    #print 'get_user_id', [user,hostname]
     GROUP=pwd.getpwnam(user).pw_name
     ginfo=grp.getgrnam(GROUP)
     uid=os.getuid()
@@ -958,12 +959,13 @@ def update_repository(repository_ids, user_id, host_id):
         out_ids.append(r_id)
     return out_ids
 def validate_addon_path(repository_ids):
-    print repository_ids
+    #print repository_ids
+    _logger.debug("validate_addon_path for repository_ids: %s", repository_ids)
     ret=get_addons(repository_ids)
     for c_id, addon_path,path,modules in ret:
         arg=[('id','=',c_id)]
         val={'validated_addon_path':addon_path}
-        print val
+        _logger.debug("  c_id: %s, addon_path: %s", c_id, addon_path)
         r_id=update_one('deploy.repository',arg, val )
 
 def apps2repository(application_ids):
@@ -975,14 +977,7 @@ def apps2repository(application_ids):
                 app_repository_ids.append(ar_id)
     return app_repository_ids
 def update_deployments(opt, user_id, host_id, deploy_ids):#app_ids, user_id, pg_user_id, name=''):
-    #r_ids = apps2repository(app_ids)                                                                                                                                                                        
-    #user = read('deploy.host.user', user_id, ['name','login','home'])                                                                                                                                       
-    #ROOT=user['home']                                                                                                                                                                                       
-    print 44*'_'
-    print 'Updating validated_config_file and validated_server_path back to server'
-    #ROOT=os.path.join(ROOT, opt.subdir)                                                                                                                                                                     
-    #if not os.path.isdir(ROOT):                                                                                                                                                                             
-    #    os.makedirs(ROOT) #create if it does not exist                                                                                                                                                      
+    _logger.info("update_deployments: deploy_ids: %s", deploy_ids)
     for d_id in deploy_ids:
         d=read('deploy.deploy', d_id, ['odoo_config','clone_ids','user_id'])
         clone_ids = d['clone_ids']
@@ -1006,64 +1001,13 @@ def update_deployments(opt, user_id, host_id, deploy_ids):#app_ids, user_id, pg_
         #print 'server path: ', c['name']                                                                                                                                                                    
         arg=[('id','=',d_id)]
         update_one('deploy.deploy',arg, val)
-        print 'Result below (you will only see server path and config file name if present in your system)'
-        print '%s/openerp-server -c %s' %(validated_server_path, validated_config_file)
+        #print 'Result below (you will only see server path and config file name if present in your system)'
+        _logger.info('%s/openerp-server -c %s' %(validated_server_path, validated_config_file) )
 
-
-
-def update_deploymentsOLD(opt,app_ids, user_id, pg_user_id, name=''):
-    #r_ids = apps2repository(app_ids)
-    user = read('deploy.host.user', user_id, ['name','login','home'])
-    ROOT=user['home']
-    print 'update_deployments (validating config and server path)'
-    ROOT=os.path.join(ROOT, opt.subdir)
-    if not os.path.isdir(ROOT):
-        os.makedirs(ROOT) #create if it does not exist
-
-    for app_id in app_ids:
-        arg=[('application_id','in',[app_id]),('user_id','=',user_id),('pg_user_id','=',pg_user_id)
-         ]
-        if name:
-            arg = arg + [('name','=',name)]
-        #val={'application_id':app_id,
-        #     'pg_user_id':pg_user_id,
-        #     'user_id':user_id,
-        #}
-        #update_one('deploy.deploy',arg, val)
-
-        deploy_ids = search('deploy.deploy',arg)
-        for d_id in deploy_ids:
-            d=read('deploy.deploy', d_id, ['odoo_config','clone_ids'])
-            clone_ids = d['clone_ids']
-        
-            c_id,server_path=get_server(clone_ids)
-
-            #print server_path
-            c=d['odoo_config']
-            if os.path.isfile(c):
-                validated_config_file = c
-            else:
-                validated_config_file = ''
-            if server_path and os.path.isdir(server_path):
-                validated_server_path = server_path
-            else:
-                validated_server_path = ''
-            val={#'application_id':app_id,
-                 #'pg_user_id':pg_user_id,
-                 #'user_id':user_id,
-                 'validated_config_file': validated_config_file,
-                 'validated_server_path': validated_server_path,
-                #'validated_root':ROOT,
-             }
-            print 44*'_'
-            #print 'server path: ', c['name']
-            arg=[('id','=',d_id)]
-            update_one('deploy.deploy',arg, val)
-            print arg
-            print '%s/openerp-server -c %s' %(validated_server_path, validated_config_file)
-            
 
 HELP="""
+OUT OF DATE, OUT OF DATE
+TBD
 clone ... clone git and bzr repositories that are used in all current user applications
 
 pg ... uses pg_lsclusters to list clusters and updates deploy.pg.cluster 
@@ -1125,7 +1069,7 @@ def get_deploy_options_group(parser):
     if os.path.isfile(cfg_fn):
         c = ConfigParser.ConfigParser()
         ret = c.read( [cfg_fn] )
-        print c.sections()
+        #print c.sections()
         apiurl=c.get('deploy_server','apiurl')
         login= c.get('deploy_server','login')
         passwd=c.get('deploy_server','passwd')
@@ -1176,15 +1120,24 @@ def get_deploy_options_group(parser):
                      help="Default: [%default]",
                      default=key
                      )
+    group.add_option("--log_level",
+                     dest='log_level',
+                     help="Default: [%default]",
+                     default=logging.INFO
+                     )
+
     return group
 
 def get_env(main_opt=None):
+    _logger.info("platform: %s", platform.dist() )
+
     global uid
     global sock
     global opt
     if main_opt:
         opt=main_opt
-        print opt.apiurl
+        _logger.debug("opt.apiurl: %s", opt.apiurl)
+        #print opt.apiurl
     import getpass
     current_login=getpass.getuser()
     USER=current_login
@@ -1198,6 +1151,8 @@ def get_env(main_opt=None):
     return user_id, host_id
 
 def parse(sys_args):
+    logging.basicConfig()
+
     global opt
     hostname=socket.gethostname()    
     usage = "usage: python %prog [options] cmd1, cmd2, .. [db1, db2, ...]\n"
@@ -1207,6 +1162,7 @@ def parse(sys_args):
     deploy_group=get_deploy_options_group(parser)
     parser.add_option_group(deploy_group)
     opt, args = parser.parse_args(sys_args)
+    logging.getLogger('gtclib.golive').setLevel( opt.log_level )
 
     if opt.key:
         PASS=opt.key
@@ -1497,4 +1453,5 @@ def parse(sys_args):
 
     return
 if __name__ == '__main__':
+#    logging.basicConfig()
     parse(sys.argv[1:])
