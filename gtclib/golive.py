@@ -364,15 +364,15 @@ def get_pg_user_id(user_id, host_id):
     pg_user_id=pg_user_ids[0]
     return pg_user_id
 
-def add_deployment(cmd2, port,user_id, host_id):
+def add_deployment(cmd2,user_id, host_id):
     app_ids = search('deploy.application', [('name','=',cmd2)] )
 
     assert len(app_ids)==1
     app_id=app_ids[0]
 
-    option_ids = search('deploy.options', [('xmlrpc_port','=',port)] )
-    assert len(option_ids)==1
-    option_id=option_ids[0]
+    #option_ids = search('deploy.options', [('xmlrpc_port','=',port)] )
+    #assert len(option_ids)==1
+    #option_id=option_ids[0]
     password_ids = search('deploy.password',[('name','=','PASS_deploy_pg_user_78_password_id')])
     assert len(password_ids)==1
     password_id = password_ids[0]
@@ -386,7 +386,7 @@ def add_deployment(cmd2, port,user_id, host_id):
          'application_id': app_id,
          'pg_user_id':pg_user_id,
          'user_id':user_id,
-         'option_id':option_id,
+     #    'option_id':option_id,
          'password_id':password_id}
 
     d_id=update_one('deploy.deploy', arg,val)
@@ -1300,6 +1300,9 @@ def parse(sys_args):
             init(cmd2, user_id, host_id)
         elif cmd=='add_app':
             add_app(cmd2, user_id, host_id)
+        elif cmd=='add_deployment':
+            #port=name
+            add_deployment(cmd2,user_id, host_id)
         elif cmd=='run':
             arg=[('user_id','=',user_id), ('template_id.model','=',cmd2)]
             run(arg, user_id, host_id,key)
@@ -1371,9 +1374,6 @@ def parse(sys_args):
         if cmd=='list' and cmd2 =='modules':
             ret = list_modules(user_id, host_id)
             print ret
-        elif cmd=='add_deployment':
-            port=name
-            add_deployment(cmd2, port, user_id, host_id)
         elif cmd=='update' and cmd2=='server':
             print 'update server'
             update_deployments(opt, user_id, host_id, [int(name)] )
