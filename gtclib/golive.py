@@ -1132,7 +1132,7 @@ def get_deploy_options_group(parser):
     group.add_option("--log_level",
                      dest='log_level',
                      help="Default: [%default], options: "+logging_options,
-                     default='info',
+                     default='debug',
                      )
 
     return group
