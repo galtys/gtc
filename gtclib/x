@@ -1,0 +1,114 @@
+On branch version70
+Your branch is up-to-date with 'origin/version70'.
+
+nothing to commit, working directory clean
+On branch pjb
+Your branch is up-to-date with 'origin/pjb'.
+
+nothing to commit, working directory clean
+On branch master
+Your branch is up-to-date with 'origin/master'.
+
+nothing to commit, working directory clean
+On branch master
+Your branch is up-to-date with 'origin/master'.
+
+nothing to commit, working directory clean
+On branch master
+Your branch is up-to-date with 'origin/master'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   hello_world.go
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+
+	hw
+
+no changes added to commit (use "git add" and/or "git commit -a")
+On branch master
+Your branch is up-to-date with 'origin/master'.
+
+nothing to commit, working directory clean
+On branch master
+Your branch is ahead of 'origin/master' by 1 commit.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   check_debtors.py
+	modified:   invoicing_from_delivery.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+
+	MX-2314N_20151001_092109.pdf
+	Matplotlib.pdf
+	axes_props.py
+	barchart_demo.py
+	barh_demo.py
+	check_sale_tax.py
+	dependencies_account.png
+	dependencies_pjb_deliver.png
+	dependencies_pjb_stock.png
+	dependencies_product.png
+	dependencies_sale.png
+	dependencies_stock.png
+	inspect_dependencies.py
+	invoice_period_investigation.py
+	matplotlib_date_demo.py
+	not_used_modules.py
+	pie_demo_features.py
+	pjb-2016-02-04_1708_before.psql
+	pjb-2016-05-30_1437.psql
+	reason_for_return.py
+	split_inv_for_SO12344.txt
+	vat_investigation.py
+
+no changes added to commit (use "git add" and/or "git commit -a")
+On branch 7.0
+Your branch is up-to-date with 'origin/7.0'.
+
+nothing to commit, working directory clean
+On branch 7.0
+Your branch is up-to-date with 'origin/7.0'.
+
+nothing to commit, working directory clean
+On branch 7.0
+Your branch is behind 'origin/7.0' by 62 commits, and can be fast-forwarded.
+  (use "git pull" to update your local branch)
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+
+	web_sheet_full_width/
+
+nothing added to commit but untracked files present (use "git add" to track)
+On branch master
+nothing to commit, working directory clean
+On branch master
+nothing to commit, working directory clean
+On branch migrated_pjb70
+Your branch is up-to-date with 'origin/migrated_pjb70'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   addons/account/wizard/account_fiscalyear_close.py
+
+no changes added to commit (use "git add" and/or "git commit -a")
+On branch master
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+
+	manifest_importexport_csv.tar.gz
+	sale_picking_split.tar.gz
+	sync_picking_split.zip
+
+nothing added to commit but untracked files present (use "git add" to track)

@@ -1196,18 +1196,19 @@ def parse(sys_args):
     app_repository_ids = apps2repository(application_ids)
 
     update_repository(app_repository_ids, user_id, host_id)
-    arg=[('local_user_id','=',user_id),
-         ('use','in',['server','addon']),
-         ('remote_id','in',app_repository_ids)]
-    local_r_ids = search('deploy.repository',arg)
-    validate_addon_path(local_r_ids)
+    if len(args)>2:
+        arg=[('local_user_id','=',user_id),
+             ('use','in',['server','addon']),
+             ('remote_id','in',app_repository_ids)]
+        local_r_ids = search('deploy.repository',arg)
+        validate_addon_path(local_r_ids)
 
-    arg=[('local_user_id','=',user_id),
-         ('remote_id','in',app_repository_ids)]
-    local_r_ids = search('deploy.repository',arg)
-    #validate_addon_path(local_r_ids)
-    git_ids=git_search(local_r_ids)
-    bzr_ids=bzr_search(local_r_ids)
+        arg=[('local_user_id','=',user_id),
+             ('remote_id','in',app_repository_ids)]
+        local_r_ids = search('deploy.repository',arg)
+        git_ids=git_search(local_r_ids)
+
+        #bzr_ids=bzr_search(local_r_ids)
     def save_model(opt,model, arg, fields, key):
         deploy_ids=search(model,arg)
         c=records2config(model, deploy_ids, fields,
@@ -1223,17 +1224,17 @@ def parse(sys_args):
         cmd=args[0]
         if cmd=='clone':
             git_clone(git_ids)
-            bzr_branch(bzr_ids)
+            #bzr_branch(bzr_ids)
         elif cmd=='status':
             git_status(git_ids)
-            bzr_status(bzr_ids)
+            #bzr_status(bzr_ids)
         elif cmd=='pull':
             git_pull(git_ids)
-            bzr_pull(bzr_ids)
+            #bzr_pull(bzr_ids)
             update_repository(app_repository_ids,user_id, host_id)
         elif cmd=='push':
             git_push(git_ids)
-            bzr_push(bzr_ids)
+            #bzr_push(bzr_ids)
         elif cmd=='pg':
             cluster_ids = update_clusters(host_id,key)
         elif cmd=='pg_deploy':
@@ -1272,6 +1273,29 @@ def parse(sys_args):
         def disp(a):
             return str(a)
         cmd,cmd2=args
+        if cmd in ['status','pull','push']:
+            arg = [('name','=', cmd2),
+                   ('user_id','=', user_id)]
+            deploy_ids = search('deploy.deploy', arg)
+
+            ret = read('deploy.deploy', deploy_ids, ['clone_ids'] )
+            _logger.debug("deploy.deploy instances found: %s", ret) 
+            local_r_ids = local_r_ids = ret[0]['clone_ids']
+            git_ids=git_search(local_r_ids)
+
+            if cmd=='status':
+                git_status(git_ids)
+                #bzr_status(bzr_ids)
+            elif cmd=='pull':
+                git_pull(git_ids)
+                #bzr_pull(bzr_ids)
+                update_repository(app_repository_ids,user_id, host_id)
+            elif cmd=='push':
+                git_push(git_ids)
+                #bzr_push(bzr_ids)
+
+
+
         if cmd=='init':
             init(cmd2, user_id, host_id)
         elif cmd=='add_app':
