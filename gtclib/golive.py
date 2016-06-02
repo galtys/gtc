@@ -1173,7 +1173,8 @@ def parse(sys_args):
     opt, args = parser.parse_args(sys_args)
     if __name__=='__main__':
         if opt.log_level != 'none':
-            logging.getLogger('gtclib.golive').setLevel( opt.log_level )
+            logging.getLogger('gtclib.golive').setLevel( LOG_MAP.get(opt.log_level) )
+        _logger.info('Logger: gtclib.golive set to level: %s', opt.log_level )
     #else:
      #   logging.getLogger('gtclib.golive')
     if opt.key:
@@ -1188,7 +1189,6 @@ def parse(sys_args):
         key=getpass.getpass()
     
     user_id,host_id=get_env(opt)
-
 
     user_apps=read('deploy.host.user',user_id, ['app_ids'])
     application_ids=user_apps['app_ids']#search('deploy.application',[])
