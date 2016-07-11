@@ -83,12 +83,12 @@ def sudo_cp(src, dst):
 def sudo_chmod(fn, chmod):
     arg=["sudo","chmod",chmod,fn]
     if DEBUG:
-        _logger.debug("sudo_chmod arg:", arg)
+        _logger.debug("sudo_chmod arg: %s", arg)
     subprocess.call(arg)
 def run_chmod(fn, chmod):
     arg=["chmod",chmod,fn]
     if DEBUG:
-        _logger.debug("run_chmod arg:", arg)
+        _logger.debug("run_chmod arg: %s", arg)
     subprocess.call(arg)
 
 def write_file(fn,c,user,group,chmod, user_id):
@@ -132,7 +132,7 @@ def write_file(fn,c,user,group,chmod, user_id):
         fp.close()
         if chmod:
             run_chmod(fn,chmod)
-        _logger.debug("write_file, file written to: ", fn)
+        _logger.debug("write_file, file written to: %s", fn)
 
 def read(model,ids,fnames):
 #    return sock.execute(dbname, uid, 'g77', 'deploy.repository', 'read',  clone_ids,['git_clone','mkdir'])
@@ -264,6 +264,7 @@ def run(arg, user_id, host_id, key):
                                            'content_generated'])
 
     for f in files:
+        _logger.debug("def run: f: %s", str(f))
         t_id=f['template_id'][0]
         f_id=f['id']
         content_generated=f['content_generated']
@@ -1196,7 +1197,7 @@ def parse(sys_args):
     app_repository_ids = apps2repository(application_ids)
 
     update_repository(app_repository_ids, user_id, host_id)
-    if len(args)>2:
+    if len(args)!=2:
         arg=[('local_user_id','=',user_id),
              ('use','in',['server','addon']),
              ('remote_id','in',app_repository_ids)]
