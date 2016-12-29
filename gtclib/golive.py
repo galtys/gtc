@@ -431,6 +431,14 @@ def get_server(clone_ids):
                 spcnt+=1
                 if spcnt>1:
                     raise ValueError("only one server path allowed")
+            server=os.path.join(a,'odoo/addons/base')
+            if os.path.isdir(server):
+                server_path=a
+                c_id=c['id']
+                spcnt+=1
+                if spcnt>1:
+                    raise ValueError("only one server path allowed")
+
     return c_id,server_path
 
 def get_parent_dir(path):
