@@ -393,7 +393,8 @@ def add_deployment(cmd2,user_id, host_id):
     d_id=update_one('deploy.deploy', arg,val)
     _logger.info('Runn the following command:')
     _logger.info('export DEPLOYMENT_ID=%d', d_id)
-         
+    print "DEPLOYMENT_ID=%d" % d_id
+     
 def data_export(master_data_module):
     m_id=search('ir.module.module', [('name','=',master_data_module)] )
     #print m_id,master_data_module
